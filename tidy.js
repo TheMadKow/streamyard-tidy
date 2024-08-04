@@ -184,6 +184,17 @@ function loadSettings() {
     return {}
 }
 
+
+/*******************  
+   SETUP OBSERVER
+*******************/
+
+// TODO Callback hasn't been refactored yet
+const observer = new MutationObserver(callback);
+const config = { attributes: true, childList: true, subtree: true };
+
+
+
 /*******************  
    LOAD AND UNLOAD
 *******************/
@@ -192,7 +203,6 @@ function loadTidy() {
     console.info("Tidy: Initializing");
 
     // Create an observer instance linked to the callback function
-    const observer = new MutationObserver(callback);
     observer.observe(document.body, config);
 
     settings = { ...settings, ...loadSettings() };
@@ -1698,11 +1708,8 @@ function processAddedNode(c) {
 }
 
 
-// Select the node that will be observed for mutations
-const targetNode = document.getElementById('some-id');
 // Options for the observer (which mutations to observe)
-const config = { attributes: true, childList: true, subtree: true };
-const callback = function (mutationsList, observer) {
+var callback = function (mutationsList, observer) {
     // Use traditional 'for loops' for IE 11
     var i;
     var elClass
