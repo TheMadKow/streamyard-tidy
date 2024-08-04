@@ -1,9 +1,7 @@
-'use strict';
-
 // ==UserScript==
-// @name         StreamYard Tidy
+// @name        StreamYard Tidy
 // @namespace    http://tampermonkey.net/
-// @version      0.253.00000
+// @version      0.252.00030
 // @description  try to take over the world!
 // @updateURL    https://quiz.zenidge.net/LiveScripts/StreamYardTidy.user.js
 // @downloadURL  https://quiz.zenidge.net/LiveScripts/StreamYardTidy.user.js
@@ -12,90 +10,26 @@
 // @grant        none
 // ==/UserScript==
 
-/*******************  
-   CONSTS
-*******************/
+var sVersion = '0.252.00030';
 
-const DEFAULT_GAP = 3;
-const CELL_STYLE = 'border: 1px solid black;';
-
-
-/*******************  
-   SINGELTONS
-*******************/
-
-let tidySettings = {
-    debugMode: true,
-    isOn = false,
-    layout: {
-        makeBackroomOnTop: true,
-        makeBackroomBottom: true,
-        autoAddHost: false,
-        autoAdd: false,
-        enabledArrowKeys: true,
-    },
-    grid: {
-        backgroundColour: '#FF0000',
-        baseHeight: 135,
-        baseWidth: 233,
-        sizeAdjust: 1.00,
-        rows: 2,
-        cols: 3,
-        gapWidthBetween: 3,
-        gapHeightBetween: 3,
-    },
-    cell: {
-        guestNameTextSize: 20,
-        guestNameHeight: 30, // text size + 10
-        backgroundColourName: '#00FF00',
-        foregroundColourName: '#000000',
-        emptyCellImage: 'https://i.imgur.com/h4cjsdX.png',
-    },
-    startup: {
-        startUp_IfHost_EnableView: true,
-        startUp_IfHost_ShowTidyWindow: true,
-        startUp_IfGuest_EnableView: false,
-        startUp_IfGuest_ShowTidyWindow: false,
-    },
-    // TBD
-    makeControlsOnTop: true,
-    newSettingsSystemEnable: true,
-    muteEveryone: false,
-    remoteControlWebService: true,
-    remoteControlChat: true,
-    force_RemainFullScreen: false,
-    forceFullScreen: false
-}
-
-const tidyState = {
-    grid: {
-        height = Math.round(tidySettings.grid.baseHeight * settings.grid.sizeAdjust),
-        width = Math.round(tidySettings.grid.baseWidth * tidySettings.grid.sizeAdjust),
-    },
-    outerDiv: undefined,
-    emptySlots: [],
-    buttonDivs: []
-}
-
-const original = {
-    textFontSize = '',
-    textPadding = '',
-    textColor = '',
-    textHeight = '',
-    micHeight = '',
-    micWidth = '',
-    micFill = '',
-}
-
-
-/*******************  
-   UNMAPPED VARS
-*******************/
-
-var sVersion = '0.253.00000';
 var MASTER_kazz_override = true;
+
+var bNewSettingsSystemEnable = true;
+
+var bMakeControlsOnTop = true;
+var bMakeBackroomOnTop = true;
+var bMakeBackroomBottom = true;
+var bAutoAddHost = false;
+var bAutoAdd = false;
+var bEnabledArrowKeys = true;
+var bMuteEveryone = false;
+var bRemoteControlWebService = true;
+var bRemoteControlChat = true;
+
 var WS_ON = true;
 var DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC = false;
+
+
 var checkWSInterval;
 var iMS_CheckWS = 5000;
 var sWSKeys = [];
@@ -107,27 +41,86 @@ var permissionCommands = ['ME_MIC_OFF', 'ME_MIC_ON', 'ME_MIC_TOGGLE',
     'TIDY_VIEW_ON', 'TIDY_VIEW_OFF', 'TIDY_VIEW_TOGGLE',
     'ADD_SELF', 'REMOVE_SELF', 'MUTE_SELF', 'UNMUTE_SELF',
     'ADD_OTHER', 'REMOVE_OTHER', 'MUTE_OTHER', 'UNMUTE_OTHER'];
+
+
+var bStartUp_IfHost_EnableView = true;
+var bStartUp_IfHost_ShowTidyWindow = true;
+var bStartUp_IfGuest_EnableView = false;
+var bStartUp_IfGuest_ShowTidyWindow = false;
+
+var bForce_RemainFullScreen = false;
+var bForceFullScreen = false;
 var LAST_SOLO_LAYOUT_BUTTON;
+
 var RemotelyLogConnectDisconnectMessage = true;
+
 var googleTagLengthChecked = 0;
 var checkingGoogleTags = false;
 var googleTagInterval;
+
+
+//var cellStyle = 'height:270px;width:466px;';
+//var cellStyle = 'height:135px;width:233px;background-color:red;';
+//var iHeight = 135
+//var iWidth = 233
+//var iHeight = 270
+//var iWidth = 466
+var slots = 12;
+var baseHeight = 135;
+var baseWidth = 233;
+var sizeAdjust = 1.00;
+var nameHeight = 30;
+var rows = 2;
+var cols = 3;
+var iGap = 0; //13; //3;
 var iInfoGap = 35;
+//140 = Dave - 6 People x2.0 - Font 30
+//70 = Dave - 10 People x1.6 - Font 23
+//3 = Everyone - Release
+var iGapWidthBetween = 3; // ;140; //
+//var iGapWidthBetween = 63; // 3 // ;
+//var iGapWidthBetween =? 3; // 3 // ;
+var iGapHeightBetween = 3; // 165; // 3 // ;
+
 var doConnectToOBS = false;
 var backgroundType = 'img';
+//var sIm = 'https://i.imgur.com/DSPabnO.png';
+var sIm = 'https://i.imgur.com/h4cjsdX.png';
+//var sIm = 'https://i.imgur.com/7F4Xj93.jpg' // MathPig Productions
+
 var tidyExternalWindow;
 var chatWindow;
 var openedChatWindow = false;
 var tidySettingsWindow;
 var tidySettingsWindowOpen = false;
 
+var backgroundColour = '#FF0000';
+var backgroundColourName = '#00FF00';
+var foregroundColourName = '#000000';
+var eslStyle = 'border: 1px solid black;'; //''; //
+//var eslStyle = ''; //''; //
+
 var iDoneX = 0;
+var bIsOn = false;
 var bIsHost = false;
 var hostName = '';
 var sssK = '';
 var clientID = '';
+
 var setupKeyUp = false;
+
 var State = "UNKNOWN";
+
+var nameTextSize = 20;
+
+(function () {
+    'use strict';
+    //setInterval(doThis, 1000);
+    setTimeout(doThis, 3000);
+
+    // Your code here...
+})();
+
 var cells = [];
 var gotWrap = false;
 var tagsWrap;
@@ -140,532 +133,6 @@ var rowChatColourMe = '#ffba4a';
 var dave_chatTextBox;
 var chatTextArea, chatSubmitBtn;
 
-
-/*******************  
-   HELPER FUNCTIONS
-*******************/
-
-function getPosition(row, col) {
-    return `${row}|${col}`;
-}
-
-function selectWindow(v) {
-    const rowCol = v.split("|");
-    selectedRow = 1 * rowCol[0];
-    selectedCol = 1 * rowCol[1];
-
-    if (chatWindow) {
-        const extSelect = chatWindow.document.getElementById("selectRowCol");
-        if (extSelect.value != v) extSelect.value = v;
-
-        const sName = document.getElementById('StreamerName-R' + selectedRow + '-C' + selectedCol).textContent;
-        chatWindow.document.getElementById("rowColSelectDescription").innerHTML = sName;
-
-        const dltbl = chatWindow.document.getElementById("duplicatedLayoutTbl");
-        let oRow, oCol
-        for (let iRow = 0; iRow < rows; iRow++) {
-            oRow = dltbl.rows[iRow];
-            for (var iCol = 0; iCol < cols; iCol++) {
-                oCol = oRow.cells[iCol];
-                if (iRow == selectedRow && iCol == selectedCol) {
-                    oCol.style.backgroundColor = '#ff6d57';
-                } else {
-                    oCol.style.backgroundColor = '#ffffff';
-                }
-            }
-        }
-    }
-
-}
-
-
-/*******************  
-   SETTINGS SAVE LOAD
-*******************/
-
-function saveSettings(settings) {
-    localStorage.setItem("tidy-settings", JSON.stringify(settings));
-}
-
-function loadSettings() {
-    const savedSettings = localStorage.getItem('tidy-settings');
-    if (savedSettings) {
-        return JSON.parse(savedSettings)
-    }
-
-    return {}
-}
-
-/*******************  
-   LOAD AND UNLOAD
-*******************/
-
-function loadTidy() {
-    console.info("Tidy: Initializing");
-
-    observer.observe(document.body, config);
-
-    settings = { ...settings, ...loadSettings() };
-
-    tidyState.grid.height = Math.round(baseHeight * settings.sizeAdjust);
-    tidyState.grid.width = Math.round(baseWidth * settings.sizeAdjust);
-
-    setupOuterDiv()
-
-    window.addEventListener("unload", unloadTidy);
-    console.info("Tidy: Initialized");
-}
-
-function loadSaveSettings() {
-    // TODO this function should be deprecated
-    var tmpCookie = window.readCookie('daveWSk');
-    if (tmpCookie) { sWSKeys = tmpCookie.split('#$'); }
-    tmpCookie = window.readCookie('daveWSa');
-    if (tmpCookie) { sWSAliases = tmpCookie.split('#$'); }
-
-    for (var i = 0, elLength = sWSKeys.length; i < elLength; i++) {
-        tmpCookie = window.readCookie('daveWSP_' + i);
-        if (tmpCookie) { sRemoteWSPerm[sWSKeys[i]] = tmpCookie; }
-    }
-
-    tmpCookie = window.readCookie('daveCHP');
-    if (tmpCookie) { sRemoteChatPerm = tmpCookie; }
-
-    tmpCookie = window.readCookie('daveWSms');
-    if (!isNaN(tmpCookie)) { iMS_CheckWS = 1 * tmpCookie; }
-    if (iMS_CheckWS < 1000) { iMS_CheckWS = 5000 }
-}
-
-function setupOuterDiv() {
-    if (!tidyState.outerDiv) {
-        createOuterDiv();
-    }
-
-    const { cols, rows, gapWidthBetween, gapHeightBetween } = tidySettings.grid;
-    const { guestNameHeight } = tidySettings.cell;
-    const cellHeight = tidyState.grid.height;
-    const cellWidth = tidyState.grid.width;
-
-    tidyState.outerDiv.style.width =
-        ((cols * (tidyState.grid.width + gapWidthBetween) + DEFAULT_GAP + DEFAULT_GAP - gapWidthBetween)) + 'px';
-
-    tidyState.outerDiv.style.height =
-        (((rows) * (tidyState.grid.height + gapHeightBetween + guestNameHeight)) + DEFAULT_GAP - settings.gapHeightBetween) + 'px';
-
-    const slots = rows * cols;
-    tidyState.emptySlots = Array(slots).fill({})
-    tidyState.buttonDivs = Array(slots).fill({})
-
-    let currentLeft, currentTop = cellHeight + DEFAULT_GAP + DEFAULT_GAP;
-    let streamNo = 0;
-
-    for (let row = 0; row < rows; row++) {
-        currentLeft = DEFAULT_GAP;
-        for (let col = 0; col < cols; col++) {
-            const imageLeft = DEFAULT_GAP + (col * (cellWidth + gapWidthBetween));
-            const imageTop = DEFAULT_GAP + (row * (cellHeight + DEFAULT_GAP + guestNameHeight + gapHeightBetween));
-
-            tidyState.emptySlots[streamNo].src = tidySettings.cell.emptyCellImage;
-            tidyState.emptySlots[streamNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + imageTop + 'px; left: ' + imageLeft + 'px; width: ' + cellWidth + 'px; height: ' + cellHeight + 'px;  background-color: green;' + CELL_STYLE);
-
-            const position = getPosition(row, col);
-
-            tidyState.emptySlots[streamNo].setAttribute('currentpos', position);
-            tidyState.emptySlots[streamNo].addEventListener("click", () => { emptyImageClick(this); }, false);
-            tidyState.emptySlots[streamNo].setAttribute('style', 'visibility:hidden;')
-
-            settings.buttonDivs[streamNo].setAttribute('row', row)
-            settings.buttonDivs[streamNo].setAttribute('col', col)
-            settings.buttonDivs[streamNo].setAttribute('style', 'position: fixed; visibility:hidden; color:black; z-index: 2; padding:2px; top: ' + currentTop + 'px; left: ' + currentLeft + 'px; width: ' + cellWidth + 'px; height: ' + guestNameHeight + 'px;  background-color: green; border: 1px solid black;');
-            settings.buttonDivs[streamNo].id = `StreamerName-R${row}-C${col}`;
-
-            currentLeft = currentLeft + cellWidth + DEFAULT_GAP;
-            streamNo = streamNo + 1;
-        }
-        currentTop = currentTop + DEFAULT_GAP + nameHeight + cellHeight + DEFAULT_GAP;
-    }
-}
-
-function unloadTidy() {
-    try {
-        if (openedChatWindow) {
-            if (chatWindow) {
-                chatWindow.document.title = chatWindow.document.title + ' [DISCONNECTED]';
-
-            }
-        }
-
-        if (tidySettings.isOn) {
-            turnScriptOff();
-        }
-    } catch (e) {
-        console.error(e)
-    }
-}
-
-/*******************  
-   TURN ON SCRIPT
-*******************/
-
-function turnScriptOn() {
-    console.log('Tidy: Script turned on');
-    tidySettings.isOn = !tidySettings.isOn;
-
-    document.title = 'StreamYard-ForOBS';
-    outerDiv.style.display = 'block';
-    outerDiv.style.visibility = 'visible';
-
-    GrabVideos();
-    resizeExisting();
-    SetAllCardRowWrapSettings();
-
-    if (tagsWrap) {
-        tagsWrap.style.visibility = 'hidden';
-    }
-
-    if (!setupKeyUp) {
-        document.addEventListener('keyup', handleKeyUp);
-    }
-}
-
-
-function GrabVideos() {
-    const elements = document.querySelectorAll('div');
-
-    for (let i = 0; i < elements.length; i++) {
-        const elClass = elements[i].className;
-
-        if (elClass.startsWith("Stream__Wrap")) {
-            initFoundStream(elements[i])
-        } else if (elClass.indexOf('Video__Wrap') != -1) {
-            elements[i].setAttribute('style', 'z-index:auto;');
-            const subElements = elements[i].querySelectorAll('img');
-            for (let j = 0; j < subElements.length; j++) {
-                if (subElements[j].className.startsWith("OverlayImage__StyledImage")) {
-                    subElements[j].setAttribute('style', 'visibility:hidden;');
-                }
-            }
-
-        } else if (elClass.startsWith("GhostWrapper")) {
-            elements[i].style.display = 'none';
-            elements[i].style.visibility = 'hidden';
-        }
-    }
-}
-
-function initFoundStream(e) {
-    if (settings.debugMode) {
-        console.log('Tidy: initFoundStream original stream')
-    }
-
-    var streamerName = getStreamerName(e);
-    if (streamerName == '') {
-        // This is a shared screen
-        // This is now somewhat bugged
-    }
-
-    e.setAttribute('origstyle', e.getAttribute('style'));
-    e.addEventListener("click", () => { onStreamClick(this); }, false);
-
-    const position = findPlaceForStream(streamerName, false);
-    if (position.found) {
-        if (position.moveExisting) {
-            const existingElement = getCurrentElementInPlace(getPosition(position.row, position.col));
-            const existingStreamerName = getStreamerName(existingElement)
-            const positionExisting = findPlaceForStream(existingStreamerName, true);
-
-            if (positionExisting.found) {
-                setStreamPosition(existingElement, positionExisting.row, positionExisting.col, existingStreamerName);
-            } else {
-                alert('Can\'t find a position for the existing streamer...');
-            }
-        }
-
-        setStreamPosition(e, position.row, position.col, streamerName);
-        selectWindow(getPosition(position.row, position.col));
-    } else {
-        alert('Can\'t find a position for this streamer...');
-    }
-}
-
-
-function onStreamClick(e) {
-    if (settings.debugMode) {
-        console.log(`stream clicked: ${e} `);
-    }
-    selectWindow(e.getAttribute('currentpos'));
-}
-
-
-function getStreamerName(e) {
-    let streamerName = '';
-    let paragraphs = e.querySelectorAll('P');
-    for (var i = 0; i < paragraphs.length; i++) {
-        if (paragraphs[i].className.indexOf("__NameText") != -1) {
-            streamerName = paragraphs[i].textContent;
-            i = paragraphs.length;
-        }
-
-    }
-    return streamerName;
-}
-
-
-// TODO Maybe refactor this later
-function findPlaceForStream(streamerName, onlyEmpty) {
-    var r = {
-        found: false,
-        row: -1,
-        col: -1,
-        moveExisting: false
-    }
-    var iRow, iCol, position;
-    var eOld;
-    var tmpName;
-    // Let's see if there is already a spot for this person
-    for (iRow = 0; iRow < rows; iRow++) {
-        for (iCol = 0; iCol < cols; iCol++) {
-            tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
-            if (tmpName == streamerName) {
-                position = iRow + "|" + iCol;
-                eOld = getCurrentElementInPlace(position)
-                if (eOld) {
-                    if (!onlyEmpty) {
-                        r.found = true; r.row = iRow; r.col = iCol; r.moveExisting = true;
-                        iRow = rows; iCol = cols;
-                    }
-                } else {
-                    r.found = true; r.row = iRow; r.col = iCol;
-                    iRow = rows; iCol = cols;
-                }
-            }
-        }
-    }
-
-    if (!r.found) {
-        // let's see if there is an empty slot
-        for (iRow = 0; iRow < rows; iRow++) {
-            for (iCol = 0; iCol < cols; iCol++) {
-                tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
-                if (tmpName == '') {
-                    r.found = true; r.row = iRow; r.col = iCol;
-                    iRow = rows; iCol = cols;
-                }
-            }
-        }
-    }
-
-    if (!r.found) {
-        // ok, check if there is any slot not in use.
-        for (iRow = 0; iRow < rows; iRow++) {
-            for (iCol = 0; iCol < cols; iCol++) {
-                //if (ih('StreamerName-R' + iRow + '-C' + iCol) == '') {
-                position = iRow + "|" + iCol;
-                eOld = getCurrentElementInPlace(position)
-                if (!eOld) {
-                    r.found = true; r.row = iRow; r.col = iCol;
-                    iRow = rows; iCol = cols;
-                }
-                //}
-            }
-        }
-    }
-
-    return r;
-}
-
-function ih(n) {
-    try { return document.getElementById(n).innerHTML; } catch (e) { return 'error getting innerHTML'; }
-}
-
-function it(n) {
-    try { return document.getElementById(n).textContent; } catch (e) { return 'error getting textContent'; }
-}
-
-function getCurrentElementInPlace(findPos) {
-    const elements = document.querySelectorAll('div');
-    for (let i = 0; i < elements.length; i++) {
-        if (elements[i].className.startsWith("Stream__Wrap")) {
-            try {
-                const chkPos = elements[i].getAttribute('currentpos');
-                if (chkPos == findPos) {
-                    return elements[i];
-                }
-            } catch (e) {
-            }
-        }
-
-    }
-    return false;
-}
-
-
-function setStreamPosition(elm, row, col, streamerName) {
-
-    const { gapWidthBetween, gapHeightBetween, nameHeight, } = tidySettings.cell;
-    const { width, height } = tidyState.grid;
-
-    const currentLeft = DEFAULT_GAP + (col * (width + gapWidthBetween));
-    const currentTop = DEFAULT_GAP + (row * (height + DEFAULT_GAP + nameHeight + gapHeightBetween));
-
-    const position = getPosition(row, col);
-
-    elm.setAttribute('currentpos', position);
-    elm.setAttribute('style', 'position: fixed; opacity: 1; z-index:1299;  top:' + currentTop + 'px; left:' + currentLeft + 'px; width:' + width + 'px; height:' + height + 'px;');
-
-    var txt = document.getElementById('StreamerName-R' + row + '-C' + col);
-    txt.innerHTML = streamerName;
-
-    setStreamPropopertiesWeLike(elm);
-}
-
-
-
-
-function resizeExisting() {
-    // assuming new sizes have been set.
-
-    outerDiv.style.width = ((cols * (iWidth + gapWidthBetween) + DEFAULT_GAP)) + 'px';
-    outerDiv.style.height = (((rows) * (iHeight + DEFAULT_GAP + DEFAULT_GAP + nameHeight)) + DEFAULT_GAP) + 'px';
-
-    var elements = document.querySelectorAll('div');
-    var i, elLength;
-
-    var foundStreams = [];
-    var foundNo = 0;
-    var elClass = '';
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
-        elClass = elements[i].className;
-        if (elClass.startsWith("Stream__Wrap")) {
-            try {
-                var rowCol = elements[i].getAttribute('currentpos').split("|");
-                var iRow = parseInt(rowCol[0]);
-                var iCol = parseInt(rowCol[1]);
-                setStreamPosition(elements[i], iRow, iCol, document.getElementById('StreamerName-R' + iRow + '-C' + iCol).textContent);
-            } catch (e) {
-            }
-        }
-
-    }
-
-
-
-}
-
-/*******************  
-   TURN OFF SCRIPT
-*******************/
-
-
-function turnScriptOff() {
-    console.log('Tidy: Script turned off');
-    tidySettings.isOn = !tidySettings.isOn;
-
-    outerDiv.style.display = 'none';
-    outerDiv.style.visibility = 'hidden';
-
-    const elements = document.querySelectorAll('div');
-    const elLength = elements.length;
-
-    for (let i = 0; i < elLength; i++) {
-        const elClass = elements[i].className;
-        if (elClass.startsWith("Stream__Wrap")) {
-            elements[i].setAttribute('style', elements[i].getAttribute('origstyle'));
-        }
-
-    }
-
-    tagsWrap.style.visibility = 'visible';
-    resetOrigStyles();
-}
-
-
-function resetOrigStyles() {
-    let elements = document.querySelectorAll('svg');
-
-    for (let i = 0; i < elements.length; i++) {
-        if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) {
-            if (elements[i].className.baseVal.indexOf('__NameMic') != -1) {
-                resetOrigStyle(elements[i]);
-                elements[i].style.width = OrigMicWidth;
-                elements[i].style.height = OrigMicHeight;
-                elements[i].style.fill = OrigMicFill;
-            }
-        }
-    }
-
-    elements = document.querySelectorAll('div');
-    for (i = 0; i < elements.length; i++) {
-        if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
-            resetOrigStyle(elements[i]);
-        }
-    }
-
-    elements = document.querySelectorAll('p');
-    for (i = 0; i < elements.length; i++) {
-        if (((elements[i].className) + '').indexOf("__NameText") != -1) {
-            resetOrigStyle(elements[i]);
-            elements[i].style.color = original.textColor;
-            elements[i].style.height = original.textHeight;
-            elements[i].style.fontSize = original.textFontSize;
-            elements[i].style.padding = original.textPadding;;
-        }
-    }
-
-    SetAllCardRowWrapSettings();
-}
-
-function resetOrigStyle(e) {
-    try {
-        var originStyle = e.getAttribute('origstyle');
-        if (originStyle) {
-            e.setAttribute('style', originStyle);
-        }
-    } catch (e) { }
-}
-
-
-function SetAllCardRowWrapSettings() {
-    var elements = document.querySelectorAll('div');
-
-    for (let i = 0; i < elements.length; i++) {
-        const elClass = elements[i].className;
-        if (elClass.startsWith("CardRow__Row") || elClass.startsWith("CardRow__Wrap") || elClass.startsWith("Studio__CardRowWrap")) {
-            SetCardRowWrapSettings(elements[i]);
-        }
-    }
-}
-
-function SetCardRowWrapSettings(e) {
-    let zIndex = null, marginBottom = null, marginTop = null;
-    if (tidySettings.isOn) {
-        // add gubbins
-        if (bMakeBackroomOnTop) {
-            zIndex = '9005';
-        }
-        if (bMakeBackroomBottom) {
-            marginBottom = '0px';
-            marginTop = 'auto';
-        }
-    }
-
-    e.style.zIndex = zIndex;
-    e.style.marginBottom = marginBottom;
-    e.style.marginTop = marginTop;
-}
-
-
-/* IFEE EXECUTE SCRIPT */
-(function () {
-    if (settings.debugMode) {
-        console.warn('Tidy: Running in debug mode!');
-    }
-    setTimeout(loadTidy, 3000);
-})();
-
-
-
-/* REFACTORED TO HERE */
 
 function clickDaveChatSubmit() {
     //    chatTextArea.value = dave_chatTextBox.value;
@@ -693,11 +160,11 @@ function doGoRandomScrenFlip() {
         if (!bProcessingFlip) {
             bProcessingFlip = true;
             var elements = document.querySelectorAll('path');
-            var elClass = '';
+            var tmpClassName = '';
             var tmpEle;
             var screens = [];
-            var i, elLength;
-            for (i = 0, elLength = elements.length; i < elLength; i++) {
+            var i, iLen;
+            for (i = 0, iLen = elements.length; i < iLen; i++) {
                 if (elements[i].getAttribute('d') == 'M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z') {
                     screens.push(elements[i]);
                 }
@@ -722,7 +189,7 @@ function doGoRandomScrenFlip() {
                 tmpEle = screens[randomNo];
                 try {
                     elements = tmpEle.parentNode.parentNode.parentNode.querySelectorAll('button');
-                    for (i = 0, elLength = elements.length; i < elLength; i++) {
+                    for (i = 0, iLen = elements.length; i < iLen; i++) {
                         if (elements[i].ariaLabel == 'Add to stream') {
                             elements[i].click();
                             console.log('Flip...');
@@ -755,6 +222,45 @@ function getRandomInt(min, max) {
 
 
 
+function unLoadPage() {
+    try {
+        if (openedChatWindow) {
+            if (chatWindow) {
+                chatWindow.document.title = chatWindow.document.title + ' [DISCONECTED]';
+
+            }
+        }
+        if (bIsOn) {
+            turnScriptOnOff();
+        }
+    } catch (e) { }
+}
+
+function SetAllCardRowWrapSettings() {
+    var elements = document.querySelectorAll('div');
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
+            SetCardRowWrapSettings(elements[i]);
+        }
+    }
+}
+
+function SetCardRowWrapSettings(e) {
+    var zIndex = null, marginBottom = null, marginTop = null;
+    if (bIsOn) {
+        // add gubbins
+
+        if (bMakeBackroomOnTop) { zIndex = '9005'; }
+        if (bMakeBackroomBottom) { marginBottom = '0px'; marginTop = 'auto'; }
+
+    }
+
+
+    e.style.zIndex = zIndex;
+    e.style.marginBottom = marginBottom; e.style.marginTop = marginTop;
+}
 
 
 function formatAMPM(date) {
@@ -774,10 +280,10 @@ var divCardWrap;
 function getInitialNamesFromWrap() {
     if (divCardWrap) {
         var elements = divCardWrap.querySelectorAll('span');
-        var elClass = '';
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
-            elClass = elements[i].className;
-            if (elClass.startsWith("styled__ClientInfoText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+        var tmpClassName = '';
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
                 addSystemMessageToChatWindow('[Initial]', "'" + elements[i].textContent + "' Connected.");
             }
         }
@@ -789,11 +295,11 @@ function getNamesFromBackRoom() {
     if (divCardWrap) {
         var iCount = 0;
         var elements = divCardWrap.querySelectorAll('span');
-        var elClass = '';
-        var streamNo;
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
-            elClass = elements[i].className;
-            if (elClass.startsWith("styled__ClientInfoText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+        var tmpClassName = '';
+        var iNo;
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
                 iCount++;
                 sRes = sRes + iCount + '|#|' + elements[i].textContent + '||##|';
             }
@@ -806,9 +312,9 @@ function getNamesFromBackRoom() {
 
 function FindCardWrapForPerson(sName) {
     var elements = document.querySelectorAll('span');
-    var elClass = '';
+    var tmpClassName = '';
     var tmpEle;
-    for (var i = 0, elLength = elements.length; i < elLength; i++) {
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
         if (elements[i].className.indexOf('CardName__StyledText') != -1) {
             var sTmp = elements[i].innerText;
             if (sTmp == sName) {
@@ -828,13 +334,13 @@ function FindCardWrapForPerson(sName) {
 function clickCardButtonForEveryoneButHost(sAriaLabel) {
     if (divCardWrap) {
         var elements = divCardWrap.querySelectorAll('span');
-        var elClass = '';
+        var tmpClassName = '';
         var tmpHostName = getHostName()
         var tmpName = ''
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
-            elClass = elements[i].className;
-            //console.log('clickCardButtonForEveryoneButHost '  + elClass);
-            if (elClass.startsWith("Card__NameText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            //console.log('clickCardButtonForEveryoneButHost '  + tmpClassName);
+            if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
                 tmpName = elements[i].textContent;
                 if (tmpName != tmpHostName) {
                     if (clickCardButton(elements[i].textContent, sAriaLabel) == 1) {
@@ -860,7 +366,7 @@ function clickCardButton(sName, sAriaLabel) {
     if (eWraper) {
         var elements = eWraper.querySelectorAll('button');
         var sTmp;
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
             try {
                 sTmp = elements[i].ariaLabel;
 
@@ -880,12 +386,12 @@ function clickCardButton(sName, sAriaLabel) {
 }
 
 function getParentNodeWithClass(e, sName) {
-    var elClass = '';
+    var tmpClassName = '';
     var tryParent = true;
     try {
-        elClass = e.className;
-        //console.log('getParentNodeWithClass: ' + sName + ' / ' + elClass);
-        if (elClass.indexOf(sName) != -1) {
+        tmpClassName = e.className;
+        //console.log('getParentNodeWithClass: ' + sName + ' / ' + tmpClassName);
+        if (tmpClassName.indexOf(sName) != -1) {
             return e;
         }
     } catch (e) { }
@@ -901,10 +407,10 @@ function processCard__Wrap(e) {
     if (!divCardWrap) { divCardWrap = getParentNodeWithClass(e.parentNode, 'Cards__Wrap'); }
 
     var elements = e.querySelectorAll('span');
-    var elClass = '';
-    for (var i = 0, elLength = elements.length; i < elLength; i++) {
-        elClass = elements[i].className;
-        if (elClass.startsWith("Card__NameText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
             if (hostName == '') {
                 // we should never get here anymore, it should be picked up from the GoogleTags
                 addSystemMessageToChatWindow(formatAMPM(new Date), "'" + hostName + "' set in processCard__Wrap.");
@@ -917,7 +423,7 @@ function processCard__Wrap(e) {
             if (RemotelyLogConnectDisconnectMessage) { if (bIsHost) { sendMessageOurSelf(sName + ' entered the backroom.'); } }
             if (bAutoAdd || bAutoAddHost) { DelayedAddToStream(sName, elements[i].parentNode.parentNode, 1); }
 
-        } else if (elClass.startsWith("Card__BottomIconWrap")) {
+        } else if (tmpClassName.startsWith("Card__BottomIconWrap")) {
             // alert('found: ' + elements[i].innerHTML);
 
         }
@@ -928,7 +434,7 @@ function doesNodeContainButtonCalled(eWraper, sButtonName) {
     if (eWraper) {
         var elements = eWraper.querySelectorAll('button');
         var sTmp;
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
             try {
                 sTmp = elements[i].ariaLabel;
 
@@ -942,10 +448,6 @@ function doesNodeContainButtonCalled(eWraper, sButtonName) {
 }
 
 function DelayedAddToStream(sName, e, iTryNo) {
-    if (settings.debugMode) {
-        console.log(`DelayedAddToStream - sName: ${sName}, e: ${e}, iTryNo: ${iTryNo} `);
-    }
-
     // Devices not connected
     if ((MASTER_kazz_override) && (sName == 'kazz')) { return; }
 
@@ -1011,16 +513,16 @@ function DelayedAddToStream(sName, e, iTryNo) {
 function processCard__Wrap_Remove(e) {
     //console.log('processCard__Wrap_Remove');
     var elements = e.querySelectorAll('span');
-    var elClass = '';
-    for (var i = 0, elLength = elements.length; i < elLength; i++) {
-        elClass = elements[i].className;
-        if (elClass.startsWith("Card__NameText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
             //console.log('found: ' + elements[i].innerHTML);
             addSystemMessageToChatWindow(formatAMPM(new Date), "'" + elements[i].textContent + "' Removed.");
             if (RemotelyLogConnectDisconnectMessage) {
                 sendMessageOurSelf(elements[i].textContent + ' left the back room.')
             }
-        } else if (elClass.startsWith("Card__BottomIconWrap")) {
+        } else if (tmpClassName.startsWith("Card__BottomIconWrap")) {
             // alert('found: ' + elements[i].innerHTML);
 
         }
@@ -1039,10 +541,10 @@ var muteMeButton, camMeButton;
 function getStreamButtons() {
     var noGot = 0;
     var elements = document.querySelectorAll('button');
-    var elClass = '';
+    var tmpClassName = '';
     var layoutButtonType;
     var addEvent = false;
-    for (var i = 0, elLength = elements.length; i < elLength; i++) {
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
         layoutButtonType = getLayoutButtonType(elements[i]);
         if (layoutButtonType != -1) {
             switch (layoutButtonType) {
@@ -1194,24 +696,109 @@ function GrabInitialVideos() {
 }
 */
 
+function GrabVideos() {
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+
+    var foundStreams = [];
+    var foundNo = 0;
+    var tmpClassName = '';
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+
+        if (tmpClassName.startsWith("Stream__Wrap")) {
+            foundStreamVideo(elements[i])
+        } else if (tmpClassName.indexOf('Video__Wrap') != -1) {
+            elements[i].setAttribute('style', 'z-index:auto;');
+            var SubElements = elements[i].querySelectorAll('img');
+            for (var iSub = 0, iSubLen = SubElements.length; iSub < iSubLen; iSub++) {
+                if (SubElements[iSub].className.startsWith("OverlayImage__StyledImage")) {
+                    SubElements[iSub].setAttribute('style', 'visibility:hidden;');
+                }
+            }
+
+        } else if (tmpClassName.startsWith("GhostWrapper")) {
+            elements[i].style.display = 'none';
+            elements[i].style.visibility = 'hidden';
+        }
+
+    }
+
+}
 
 function changeZoom(v) {
-    settings.sizeAdjust = 1.00 * v;
-    window.writeCookie('davesiz', settings.sizeAdjust);
-    iHeight = Math.round(baseHeight * settings.sizeAdjust);
-    iWidth = Math.round(baseWidth * settings.sizeAdjust);
+    sizeAdjust = 1.00 * v;
+    window.writeCookie('davesiz', sizeAdjust);
+    iHeight = Math.round(baseHeight * sizeAdjust);
+    iWidth = Math.round(baseWidth * sizeAdjust);
     resizeExisting();
     resizeEmptySlots();
 }
 
+function resizeExisting() {
+    // assuming new sizes have been set.
+
+    outerDiv.style.width = ((cols * (iWidth + iGapWidthBetween) + iGap)) + 'px';
+    outerDiv.style.height = (((rows) * (iHeight + iGap + iGap + nameHeight)) + iGap) + 'px';
+
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+
+    var foundStreams = [];
+    var foundNo = 0;
+    var tmpClassName = '';
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Stream__Wrap")) {
+            try {
+                var vals = elements[i].getAttribute('currentpos').split("|");
+                var iRow = parseInt(vals[0]);
+                var iCol = parseInt(vals[1]);
+                setStreamPosition(elements[i], iRow, iCol, document.getElementById('StreamerName-R' + iRow + '-C' + iCol).textContent);
+            } catch (e) {
+            }
+        }
+
+    }
+
+
+
+}
+
+
+function setStreamPosition(e, useRow, useCol, streamerName) {
+    var iLeft = iGap + (useCol * (iWidth + iGapWidthBetween));
+    var iTop = iGap + (useRow * (iHeight + iGap + nameHeight + iGapHeightBetween));
+    var pos = useRow + "|" + useCol;
+
+    e.setAttribute('currentpos', pos);
+    e.setAttribute('style', 'position: fixed; opacity: 1; z-index:1299;  top:' + iTop + 'px; left:' + iLeft + 'px; width:' + iWidth + 'px; height:' + iHeight + 'px;');
+
+    var txt = document.getElementById('StreamerName-R' + useRow + '-C' + useCol);
+    txt.innerHTML = streamerName;
+
+    setStreamPropopertiesWeLike(e);
+}
+
+
+
 
 var masterdiv;
+var outerDiv;
 var moveSelect;
 
+//var iHeight = 337.5
+//var iWidth = 582.5
+
+var iHeight = Math.round(baseHeight * sizeAdjust);
+var iWidth = Math.round(baseWidth * sizeAdjust);
+
+var buttonDivs = [];
 var bShowNameUnder = true;
 
+
 var tmpTop = 0;
-var tmpLeft = DEFAULT_GAP;
+var tmpLeft = iGap;
 var tmpCol = 0;
 var tmpRow = 0;
 
@@ -1219,14 +806,30 @@ var tmpRow = 0;
 var selectedRow = 0;
 var selectedCol = 0;
 
+function getCurrentElementInPlace(findPos) {
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (elements[i].className.startsWith("Stream__Wrap")) {
+            try {
+                var chkPos = elements[i].getAttribute('currentpos');
+                if (chkPos == findPos) {
+                    return elements[i];
+                }
+            } catch (e) {
+            }
+        }
+
+    }
+    return false;
+}
 
 function moveStream(fromRow, fromCol, toRow, toCol) {
     var txtFrom, txtTo;
     var sTmp;
 
-    if (settings.debugMode) {
-        console.log('moveStream: fromRow:' + fromRow + ', fromCol:' + fromCol + ', toRow:' + toRow + ', toCol:' + toCol + ', cols:' + cols + ', rows:' + rows);
-    }
+    //    console.log('moveStream: fr:' + fromRow + ', fc:' + fromCol + ', tr:' + toRow + ', tc:' + toCol + ', cols:' + cols + ', rows:' + rows);
+
 
     if (toRow != fromRow) { if (toRow < 0 || toRow >= rows) return false; }
     if (toCol != fromCol) { if (toCol < 0 || toCol >= cols) return false; }
@@ -1260,6 +863,13 @@ function removeStreamVideo(e) {
     //e.setAttribute('currentpos', '');
 }
 
+var OrigTextFontSize = '';
+var OrigTextPadding = '';
+var OrigTextColor = '';
+var OrigTextHeight = '';
+var OrigMicHeight = '';
+var OrigMicWidth = '';
+var OrigMicFill = '';
 
 function setMicNameFieldFromSVG(e) {
     //console.log('setMicNameFieldFromSVG');
@@ -1305,13 +915,13 @@ function setNameElement(e) {
 function resetNameComponents() {
 
     var elements = document.querySelectorAll('svg');
-    var i, elLength;
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) { setMicNameFieldFromSVG(elements[i]); }
     }
 
     elements = document.querySelectorAll('div');
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
             setOrigStyle(elements[i]);
 
@@ -1359,11 +969,54 @@ function setOrigStyle(e) {
     }
 }
 
+function resetOrigStyle(e) {
+    try {
+        var sGot = e.getAttribute('origstyle');
+        if (sGot) { e.setAttribute('style', sGot); }
+    } catch (e) { }
+}
+
+function resetOrigStyles() {
+    var elements = document.querySelectorAll('svg');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) {
+            if (elements[i].className.baseVal.indexOf('__NameMic') != -1) {
+                resetOrigStyle(elements[i]);
+                elements[i].style.width = OrigMicWidth;
+                elements[i].style.height = OrigMicHeight;
+                elements[i].style.fill = OrigMicFill;
+            }
+        }
+    }
+
+    elements = document.querySelectorAll('div');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
+            resetOrigStyle(elements[i]);
+        }
+    }
+
+    elements = document.querySelectorAll('p');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameText") != -1) {
+            resetOrigStyle(elements[i]);
+
+            elements[i].style.color = OrigTextColor;
+            elements[i].style.height = OrigTextHeight;
+            elements[i].style.fontSize = OrigTextFontSize;
+            elements[i].style.padding = OrigTextPadding;
+            //elements[i].style = OrigTextCSS;
+        }
+    }
+
+    SetAllCardRowWrapSettings();
+}
 
 function getElementWithClassContaining(e, tag, classnamePart) {
     var elements = e.querySelectorAll(tag);
-    var i, elLength;
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         if (((elements[i].className) + '').indexOf(classnamePart) != -1) {
             return elements[i];
         }
@@ -1374,13 +1027,13 @@ function getElementWithClassContaining(e, tag, classnamePart) {
 
 function setStreamPropopertiesWeLike(e) {
     var elements = e.querySelectorAll('svg');
-    var i, elLength;
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) { setMicNameFieldFromSVG(elements[i]); }
     }
     //console.log("setStreamPropopertiesWeLike: " + e.className);
     elements = e.querySelectorAll('div');
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
             //console.log("setStreamPropopertiesWeLike.elements[i].className: " + elements[i].className);
             setOrigStyle(elements[i]);
@@ -1428,7 +1081,148 @@ function setStreamPropopertiesWeLike(e) {
 }
 
 
+function findAPlaceFor(streamerName, onlyEmpty) {
+    var r = {
+        found: false,
+        row: -1,
+        col: -1,
+        moveExisting: false
+    }
+    var iRow, iCol, txt, pos;
+    var eOld;
+    var tmpName;
+    var tmpName2;
+    // Let's see if there is already a spot for this person
+    for (iRow = 0; iRow < rows; iRow++) {
+        for (iCol = 0; iCol < cols; iCol++) {
+            tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
+            tmpName2 = ih('StreamerName-R' + iRow + '-C' + iCol);
+            if (tmpName == streamerName) {
+                pos = iRow + "|" + iCol;
+                eOld = getCurrentElementInPlace(pos)
+                if (eOld) {
+                    if (!onlyEmpty) {
+                        r.found = true; r.row = iRow; r.col = iCol; r.moveExisting = true;
+                        iRow = rows; iCol = cols;
+                    }
+                } else {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+            }
+        }
+    }
 
+    if (!r.found) {
+        // let's see if there is an empty slot
+        for (iRow = 0; iRow < rows; iRow++) {
+            for (iCol = 0; iCol < cols; iCol++) {
+                tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
+                tmpName2 = ih('StreamerName-R' + iRow + '-C' + iCol);
+                if (tmpName == '') {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+            }
+        }
+    }
+
+    if (!r.found) {
+        // ok, check if there is any slot not in use.
+        for (iRow = 0; iRow < rows; iRow++) {
+            for (iCol = 0; iCol < cols; iCol++) {
+                //if (ih('StreamerName-R' + iRow + '-C' + iCol) == '') {
+                pos = iRow + "|" + iCol;
+                eOld = getCurrentElementInPlace(pos)
+                if (!eOld) {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+                //}
+            }
+        }
+    }
+
+    return r;
+}
+
+/*
+function htmlDecode(input) {
+  var doc = new DOMParser().parseFromString(input, "text/html");
+  return doc.documentElement.textContent;
+}
+*/
+function ih(n) {
+    try { return document.getElementById(n).innerHTML; } catch (e) { return 'error getting innerHTML'; }
+}
+function it(n) {
+    try { return document.getElementById(n).textContent; } catch (e) { return 'error getting textContent'; }
+}
+
+
+
+function foundStreamVideo(e) {
+
+    var iRow, iCol, txt
+    var streamerName = getStreamerName(e);
+    var eOld, bFoundOne = false, bDealWithOld = false;
+    var pos;
+    var foundPos = false;
+    var useRow, useCol;
+
+    if (streamerName == '') {
+        // This is a shared screen
+        // This is now somewhat bugged
+    }
+
+
+    e.setAttribute('origstyle', e.getAttribute('style'));
+    try {
+    } catch (e) {
+    }
+    e.addEventListener("click", function () { streamClick(this); }, false);
+
+    //setStreamPropopertiesWeLike(e);
+
+    var position = findAPlaceFor(streamerName, false);
+
+    if (position.found) {
+        if (position.moveExisting) {
+            var existingElement = getCurrentElementInPlace(position.row + "|" + position.col);
+            var existingStreamerName = getStreamerName(existingElement)
+            var positionExisting = findAPlaceFor(existingStreamerName, true);
+            if (positionExisting.found) {
+                setStreamPosition(existingElement, positionExisting.row, positionExisting.col, existingStreamerName);
+            } else {
+                alert('Can\'t find a position for the existing streamer...');
+            }
+        }
+        setStreamPosition(e, position.row, position.col, streamerName);
+        selectWindow(position.row + "|" + position.col);
+    } else {
+        alert('Can\'t find a position for this streamer...');
+    }
+
+
+    //setStreamPropopertiesWeLike(e);
+}
+
+
+function getStreamerName(e) {
+
+    var sStreamerName = '';
+    var PElements = e.querySelectorAll('P');
+    for (var iChildren = 0; iChildren < PElements.length; iChildren++) {
+        if (PElements[iChildren].className.indexOf("__NameText") != -1) {
+            //PElements[iChildren].style.fontSize = nameTextSize + 'px'; //'21px';
+
+            sStreamerName = PElements[iChildren].textContent;
+            iChildren = PElements.length;
+        }
+
+    }
+    return sStreamerName;
+}
 
 function showHideMasterDiv() {
     if (masterdiv.style.height != '') {
@@ -1443,58 +1237,101 @@ function showHideMasterDiv() {
 
 function resizeEmptySlots() {
     var iCol, iRow;
-    var currentLeft, currentTop = iHeight + DEFAULT_GAP + DEFAULT_GAP;
-    var streamNo = 0;
+    var iLeft, iTop = iHeight + iGap + iGap;
+    var iNo = 0;
     for (iRow = 0; iRow < rows; iRow++) {
-        currentLeft = DEFAULT_GAP;
+        iLeft = iGap;
 
         for (iCol = 0; iCol < cols; iCol++) {
-            const currentSlot = emptySlots[streamNo];
-            if (!currentSlot) {
-                continue;
-            }
 
-            var imageLeft = DEFAULT_GAP + (iCol * (iWidth + gapWidthBetween));
-            //var imageTop = DEFAULT_GAP + (iRow * (iHeight+DEFAULT_GAP+nameHeight+DEFAULT_GAP));
-            var imageTop = DEFAULT_GAP + (iRow * (iHeight + DEFAULT_GAP + nameHeight + settings.gapHeightBetween));
+            var iImgLeft = iGap + (iCol * (iWidth + iGapWidthBetween));
+            //var iImgTop = iGap + (iRow * (iHeight+iGap+nameHeight+iGap));
+            var iImgTop = iGap + (iRow * (iHeight + iGap + nameHeight + iGapHeightBetween));
             //'http://quiz.zenidge.net/EmptySlot-Point.png'; //
-            emptySlots[streamNo].src = sIm; //'https://i.imgur.com/h4cjsdX.png'; //'file:///D:/Users/Pictures/EmptySlot.png';
-            emptySlots[streamNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + imageTop + 'px; left: ' + imageLeft + 'px; width: ' + iWidth + 'px; height: ' + iHeight + 'px;  background-color: green;' + CELL_STYLE);
+            emptySlots[iNo].src = sIm; //'https://i.imgur.com/h4cjsdX.png'; //'file:///D:/Users/Pictures/EmptySlot.png';
+            emptySlots[iNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + iImgTop + 'px; left: ' + iImgLeft + 'px; width: ' + iWidth + 'px; height: ' + iHeight + 'px;  background-color: green;' + eslStyle);
 
-            streamNo = streamNo + 1;
+            iNo = iNo + 1;
         }
     }
 }
 
+var emptySlots = [];
+var createdOuterDiv = false;
+
 function createOuterDiv() {
-    state.outerDiv = document.createElement('div');
-    state.outerDiv.setAttribute('style', 'visibility:hidden; position: fixed; z-index: 10; top: 0px; left: 0px;  background-color: ' + backgroundColour + '; border: 1px solid black;');
-    document.body.appendChild(state.outerDiv);
+    outerDiv = document.createElement('div');
+    outerDiv.setAttribute('style', 'visibility:hidden; position: fixed; z-index: 10; top: 0px; left: 0px;  background-color: ' + backgroundColour + '; border: 1px solid black;');
+    document.body.appendChild(outerDiv);
 
-    for (var streamNo = 0; streamNo < slots; streamNo++) {
+    for (var iNo = 0; iNo < slots; iNo++) {
 
-        state.emptySlots[streamNo] = document.createElement('img');
-        state.outerDiv.appendChild(emptySlots[streamNo]);
+        emptySlots[iNo] = document.createElement('img');
+        outerDiv.appendChild(emptySlots[iNo]);
 
-        state.settings.buttonDivs[streamNo] = document.createElement('div');
-        state.outerDiv.appendChild(settings.buttonDivs[streamNo]);
+        buttonDivs[iNo] = document.createElement('div');
+        outerDiv.appendChild(buttonDivs[iNo]);
 
     }
+    createdOuterDiv = true;
 }
+
+function setupOuterDiv() {
+    if (!createdOuterDiv) { createOuterDiv(); }
+    outerDiv.style.width = ((cols * (iWidth + iGapWidthBetween) + iGap + iGap - iGapWidthBetween)) + 'px';
+    outerDiv.style.height = (((rows) * (iHeight + iGapHeightBetween + iGap + nameHeight)) + iGap - iGapHeightBetween) + 'px';
+    var iCol, iRow;
+    var iLeft, iTop = iHeight + iGap + iGap;
+    var iNo = 0;
+    for (iRow = 0; iRow < rows; iRow++) {
+        iLeft = iGap;
+        for (iCol = 0; iCol < cols; iCol++) {
+
+
+            var iImgLeft = iGap + (iCol * (iWidth + iGapWidthBetween));
+            var iImgTop = iGap + (iRow * (iHeight + iGap + nameHeight + iGapHeightBetween));
+            //'http://quiz.zenidge.net/EmptySlot-Point.png'; //
+            emptySlots[iNo].src = sIm; //'https://i.imgur.com/h4cjsdX.png'; //'file:///D:/Users/Pictures/EmptySlot.png';
+            emptySlots[iNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + iImgTop + 'px; left: ' + iImgLeft + 'px; width: ' + iWidth + 'px; height: ' + iHeight + 'px;  background-color: green;' + eslStyle);
+            var pos = iRow + "|" + iCol;
+            emptySlots[iNo].setAttribute('currentpos', pos);
+            emptySlots[iNo].addEventListener("click", function () { emptyImageClick(this); }, false);
+
+            // ' HEREHEREDAVE
+
+            buttonDivs[iNo].setAttribute('row', iRow)
+            buttonDivs[iNo].setAttribute('col', iCol)
+            //visibility:hidden;
+            buttonDivs[iNo].setAttribute('style', 'position: fixed; visibility:hidden; color:black; z-index: 2; padding:2px; top: ' + iTop + 'px; left: ' + iLeft + 'px; width: ' + iWidth + 'px; height: ' + nameHeight + 'px;  background-color: green; border: 1px solid black;');
+            buttonDivs[iNo].id = 'StreamerName-R' + iRow + '-C' + iCol;
+
+            iLeft = iLeft + iWidth + iGap;
+
+            iNo = iNo + 1;
+            if (iNo > (slots - 1)) { iCol = cols; iRow = rows; }
+        }
+        iTop = iTop + iGap + nameHeight + iHeight + iGap;
+    }
+
+    for (; iNo < slots; iNo++) {
+        emptySlots[iNo].setAttribute('style', 'visibility:hidden;');
+    }
+}
+
 
 
 function processChatItemElement(e, bProc) {
     var n = '[Me]';
     var t = '';
     var m = '';
-    for (var currentTop = 0; currentTop < e.children.length; currentTop++) {
-        var uTag = e.children[currentTop].tagName.toUpperCase();
+    for (var iTop = 0; iTop < e.children.length; iTop++) {
+        var uTag = e.children[iTop].tagName.toUpperCase();
         if (uTag == 'P') {
             // at this level, this is a message from someone else;
-            n = getTextFromNodes(e.children[currentTop], false);
-            t = getTextFromNodes(e.children[currentTop].children[0], false);
+            n = getTextFromNodes(e.children[iTop], false);
+            t = getTextFromNodes(e.children[iTop].children[0], false);
         } else if (uTag == 'DIV') {
-            m = getTextFromNodes(e.children[currentTop].children[0], true);
+            m = getTextFromNodes(e.children[iTop].children[0], true);
 
         }
     }
@@ -1668,7 +1505,7 @@ function processMessage(t, n, m) {
     var iTmp = gn(m) + gn(sssK.substring(1)) + gn(n);
     switch (iTmp) {
         case 6325:
-            backgroundType = 'simg'; window.writeCookie('davebgty', 'simg'); window.writeCookie('davebgimg', sIm); window.writeCookie('davebgsty', CELL_STYLE); addToChatWindow(t, '[Tidy]', 'Background Image Unlocked...'); bShow = false;
+            backgroundType = 'simg'; window.writeCookie('davebgty', 'simg'); window.writeCookie('davebgimg', sIm); window.writeCookie('davebgsty', eslStyle); addToChatWindow(t, '[Tidy]', 'Background Image Unlocked...'); bShow = false;
             break;
         default:
             switch (m) {
@@ -1932,10 +1769,10 @@ function ensureMuteWhenRequired(e) {
             //var tmp = getParentNodeWithClass(e,'Card__CardWrap');
             var tmp = getParentNodeWithClass(e, 'CardWrap');
             var elements = tmp.querySelectorAll('span');
-            var elClass = '';
-            for (var i = 0, elLength = elements.length; i < elLength; i++) {
-                elClass = elements[i].className;
-                if (elClass.startsWith("Card__NameText") || (elClass.indexOf('CardName__StyledText') != -1)) {
+            var tmpClassName = '';
+            for (var i = 0, iLen = elements.length; i < iLen; i++) {
+                tmpClassName = elements[i].className;
+                if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
                     //console.log('person fish:' + elements[i].innerHTML);
                     if (elements[i].textContent != getHostName()) {
                         e.parentNode.click();
@@ -1971,11 +1808,11 @@ const config = { attributes: true, childList: true, subtree: true };
 const callback = function (mutationsList, observer) {
     // Use traditional 'for loops' for IE 11
     var i;
-    var elClass
+    var tmpClassName
     for (let mutation of mutationsList) {
         if (mutation.type === 'childList') {
             for (i = 0; i < mutation.addedNodes.length; i++) {
-                //elClass = mutation.addedNodes[i].className + '';
+                //tmpClassName = mutation.addedNodes[i].className + '';
                 processAddedNode(mutation.addedNodes[i]);
             }
         }
@@ -1984,28 +1821,28 @@ const callback = function (mutationsList, observer) {
         for (let mutation of mutationsList) {
             if (mutation.type === 'childList') {
                 for (i = 0; i < mutation.addedNodes.length; i++) {
-                    elClass = mutation.addedNodes[i].className + '';
+                    tmpClassName = mutation.addedNodes[i].className + '';
 
-                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! A Child Node Has Been Added : ' + elClass);
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! A Child Node Has Been Added : ' + tmpClassName);
 
-                    if (elClass.startsWith('Stream__Video') || elClass.startsWith('StreamVideo__Video')) {
-                        initFoundStream(mutation.addedNodes[i].parentNode.parentNode);
-                    } else if (elClass.startsWith('Comment__Wrap-')) {
+                    if (tmpClassName.startsWith('Stream__Video') || tmpClassName.startsWith('StreamVideo__Video')) {
+                        foundStreamVideo(mutation.addedNodes[i].parentNode.parentNode);
+                    } else if (tmpClassName.startsWith('Comment__Wrap-')) {
                         //console.log('Added Chat thing?');
                         processChatItemElement(mutation.addedNodes[i], true);
-                    } else if (((elClass) + '').indexOf("CardVideo__Video") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("CardVideo__Video") != -1) {
                         processCard__Wrap(mutation.addedNodes[i].parentNode.parentNode);
-                    } else if (elClass.startsWith("Card__Wrap") || elClass.startsWith("Card__CardWrap")) {
+                    } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
                         processCard__Wrap(mutation.addedNodes[i]);
-                    } else if (elClass.startsWith("GhostWrapper")) {
+                    } else if (tmpClassName.startsWith("GhostWrapper")) {
                         mutation.addedNodes[i].style.display = 'none';
                         mutation.addedNodes[i].style.visibility = 'hidden';
-                    } else if (elClass == '[object SVGAnimatedString]') {
+                    } else if (tmpClassName == '[object SVGAnimatedString]') {
                         setMicNameFieldFromSVG(mutation.addedNodes[i]);
                         if (bMuteEveryone) { ensureMuteWhenRequired(mutation.addedNodes[i]); }
-                    } else if (elClass.startsWith("CenterAlerts__Column")) {
+                    } else if (tmpClassName.startsWith("CenterAlerts__Column")) {
                         mutation.addedNodes[i].setAttribute('style', 'z-index:auto;');
-                    } else if (((elClass) + '').indexOf("__NameWrap") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("__NameWrap") != -1) {
                         if (mutation.target.style.borderRadius != '0px 0px 0px 0px') { mutation.target.style.borderRadius = '0px 0px 0px 0px' }
                         //mutation.target.style.transitionProperty = 'none';
                         //mutation.target.style.animationPlayState = 'paused';
@@ -2013,10 +1850,10 @@ const callback = function (mutationsList, observer) {
                         //console.log("style: " + mutation.target.style);
                         //mutation.target.style.borderRadius = '0px 0px 0px 0px'
 
-                    } else if (((elClass) + '').indexOf("Name__NameText") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("Name__NameText") != -1) {
                         //if ( mutation.target.style.paddingTop != '0px') { mutation.target.style.paddingTop = '0px' }
                         //if ( mutation.target.style.fontSize != nameTextSize + 'px') { mutation.target.style.fontSize = nameTextSize + 'px' }
-                    } else if (((elClass) + '').indexOf("UpcomingBroadcasts__TableSection") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("UpcomingBroadcasts__TableSection") != -1) {
                         if (bIsOn) { turnScriptOnOff(); }
                         State = "BROADCASTS";
                         if (isChatWindowOpen()) {
@@ -2025,21 +1862,21 @@ const callback = function (mutationsList, observer) {
                         }
 
                     }
-                    if (elClass.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
+                    if (tmpClassName.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
                         mutation.addedNodes[i].addEventListener("click", function () { cardSoloLayoutClicked(this); });
                     }
 
                 }
                 for (i = 0; i < mutation.removedNodes.length; i++) {
-                    elClass = mutation.removedNodes[i].className + '';
-                    if (elClass.startsWith("Card__Wrap") || elClass.startsWith("Card__CardWrap")) {
+                    tmpClassName = mutation.removedNodes[i].className + '';
+                    if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
                         processCard__Wrap_Remove(mutation.removedNodes[i]);
                     }
                     if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('A child node has been removed : ' + mutation.removedNodes[i].className);
-                    //elClass = mutation.addedNodes[i].className + '';
+                    //tmpClassName = mutation.addedNodes[i].className + '';
 
-                    // console.log('A child node has been added : ' + elClass);
-                    //if (elClass.startsWith('Stream__Video')) {
+                    // console.log('A child node has been added : ' + tmpClassName);
+                    //if (tmpClassName.startsWith('Stream__Video')) {
                     //   removeStreamVideo(mutation.removedNodes[i].parentNode);
                     //}
                 }
@@ -2047,23 +1884,23 @@ const callback = function (mutationsList, observer) {
             else if (mutation.type === 'attributes') {
                 // console.log('The ' + mutation.attributeName + ' attribute was modified.' +  ' in : ' +  mutation.target.className );
                 if (mutation.attributeName == 'style') {
-                    elClass = mutation.target.className + '';
-                    if (elClass == '[object SVGAnimatedString]') {
+                    tmpClassName = mutation.target.className + '';
+                    if (tmpClassName == '[object SVGAnimatedString]') {
                         setMicNameFieldFromSVG(mutation.target);
-                        elClass = mutation.target.className.baseVal + '';
+                        tmpClassName = mutation.target.className.baseVal + '';
 
 
-                        if (((elClass) + '').indexOf("__NameMic") != -1) {
+                        if (((tmpClassName) + '').indexOf("__NameMic") != -1) {
                             //  if ( mutation.target.style.width != nameTextSize + 'px') { mutation.target.style.width = nameTextSize + 'px' }
                             //  if ( mutation.target.style.height != nameTextSize + 'px') { mutation.target.style.height = nameTextSize + 'px' }
 
                         }
-                    } else if (((elClass) + '').indexOf("__NameWrap") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("__NameWrap") != -1) {
                         //if ( mutation.target.style.borderRadius != '0px 0px 0px 0px') { mutation.target.style.borderRadius = '0px 0px 0px 0px' }
                         if (bIsOn) {
                             mutation.target.style.borderRadius = '0px 0px 0px 0px'
                         }
-                    } else if (((elClass) + '').indexOf("__NameText") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("__NameText") != -1) {
                         //if ( mutation.target.style.fontSize != nameTextSize + 'px') { mutation.target.style.fontSize = nameTextSize + 'px' }
                         //Console.log("")
 
@@ -2107,18 +1944,18 @@ const callback = function (mutationsList, observer) {
         for (let mutation of mutationsList) {
             if (mutation.type === 'childList') {
                 for (i = 0; i < mutation.addedNodes.length; i++) {
-                    elClass = mutation.addedNodes[i].className + '';
-                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! Script Off: A Child Node Has Been Added : ' + elClass);
+                    tmpClassName = mutation.addedNodes[i].className + '';
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! Script Off: A Child Node Has Been Added : ' + tmpClassName);
 
-                    if (elClass.startsWith('Comment__Wrap-')) {
+                    if (tmpClassName.startsWith('Comment__Wrap-')) {
                         //console.log('Added Chat thing?');
                         processChatItemElement(mutation.addedNodes[i], true);
-                    } else if (((elClass) + '').indexOf("UpcomingBroadcasts__") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("UpcomingBroadcasts__") != -1) {
                         // we've just entered the broadcast studio, we don't need to do anything
                         State = "BROADCASTS";
-                    } else if (((elClass) + '').indexOf("Main__Wrap") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("Main__Wrap") != -1) {
                         State = "STARTING";
-                    } else if (((elClass) + '').indexOf("Studio__VideoWrap") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("Studio__VideoWrap") != -1) {
                         State = "INSTREAM";
 
                         hostName = '';
@@ -2152,21 +1989,21 @@ const callback = function (mutationsList, observer) {
                         if (doConnectToOBS) setTimeout(connectToOBS, 5000);
 
                         if (WS_ON) checkWSInterval = setInterval(checkForRemoteControlSignals, iMS_CheckWS);
-                    } else if (((elClass) + '').indexOf("CardVideo__Video") != -1) {
+                    } else if (((tmpClassName) + '').indexOf("CardVideo__Video") != -1) {
                         if (State == "INSTREAM") {
                             processCard__Wrap(mutation.addedNodes[i].parentNode.parentNode);
                         }
-                    } else if (elClass.startsWith("Card__Wrap") || elClass.startsWith("Card__CardWrap")) {
+                    } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
                         if (State == "INSTREAM") {
                             processCard__Wrap(mutation.addedNodes[i]);
                         }
-                    } if (elClass.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
+                    } if (tmpClassName.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
                         mutation.addedNodes[i].addEventListener("click", function () { cardSoloLayoutClicked(this); });
                     }
                 }
                 for (i = 0; i < mutation.removedNodes.length; i++) {
-                    elClass = mutation.removedNodes[i].className + '';
-                    if (elClass.startsWith("Card__Wrap") || elClass.startsWith("Card__CardWrap")) {
+                    tmpClassName = mutation.removedNodes[i].className + '';
+                    if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
                         processCard__Wrap_Remove(mutation.removedNodes[i]);
                     }
                     if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('A child node has been removed : ' + mutation.removedNodes[i].className);
@@ -2208,7 +2045,6 @@ const callback = function (mutationsList, observer) {
 
 
 };
-
 // Create an observer instance linked to the callback function
 const observer = new MutationObserver(callback);
 
@@ -2216,14 +2052,14 @@ const observer = new MutationObserver(callback);
 
 function lookForOtherGubbins() {
     var elements = document.querySelectorAll('div');
-    var elClass = '';
-    for (var i = 0, elLength = elements.length; i < elLength; i++) {
-        elClass = elements[i].className;
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
 
-        if (elClass.indexOf("Header__TitleWrap") != -1) {
+        if (tmpClassName.indexOf("Header__TitleWrap") != -1) {
             sHangoutTitle = getTextFromNodes(elements[i], true);
             //elements[i].parentNode.parentNode.style.zIndex = -1;
-        } else if (elClass.indexOf("Chat__Wrap-") != -1) {
+        } else if (tmpClassName.indexOf("Chat__Wrap-") != -1) {
             //elements[i].parentNode.parentNode.style.zIndex = -1;
             chatDiv = elements[i].children[0];
             if ((bIsHost && bStartUp_IfHost_ShowTidyWindow) || (!bIsHost && bStartUp_IfGuest_ShowTidyWindow)) {
@@ -2239,16 +2075,16 @@ function lookForOtherGubbins() {
             } catch (e) {
                 alert('error getting chat controls');
             }
-        } else if (elClass.indexOf("Controls__ControlWrap") != -1) {
+        } else if (tmpClassName.indexOf("Controls__ControlWrap") != -1) {
             if (gotWrap) {
                 if (bMakeControlsOnTop) { elements[i].style = 'z-index: 9001;'; }
                 setupTidyConfig(elements[i]);
             }
-        } else if (elClass.startsWith("CardRow__Row") || elClass.startsWith("CardRow__Wrap") || elClass.startsWith("Studio__CardRowWrap")) {
+        } else if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
             SetCardRowWrapSettings(elements[i]);
-        } else if (elClass.startsWith("Card__Wrap") || elClass.startsWith("CardName__Wrap")) {
+        } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("CardName__Wrap")) {
             processCard__Wrap(elements[i]);
-        } else if (elClass.startsWith("Tags__Wrap")) {
+        } else if (tmpClassName.startsWith("Tags__Wrap")) {
             tagsWrap = elements[i];
             tagsWrap.style.visibility = 'hidden';
         }
@@ -2264,10 +2100,10 @@ function lookForVideoWrap_OLD() {
     if ((!lookingForWrap) && (!gotWrap)) {
         lookingForWrap = true;
         var elements = document.querySelectorAll('div');
-        var elClass = '';
-        for (var i = 0, elLength = elements.length; i < elLength; i++) {
-            elClass = elements[i].className;
-            if (elClass.startsWith("Studio__VideoWrap")) {
+        var tmpClassName = '';
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Studio__VideoWrap")) {
                 sssK = window.location.pathname;
                 if (getStreamButtons() > 0) {
                     if (buttons_groupLayout) {
@@ -2284,10 +2120,10 @@ function lookForVideoWrap_OLD() {
                 if (doConnectToOBS) setTimeout(connectToOBS, 5000);
 
                 setInterval(checkForRemoteControlSignals, iMS_CheckWS);
-            } else if (elClass.indexOf("Header__TitleWrap") != -1) {
+            } else if (tmpClassName.indexOf("Header__TitleWrap") != -1) {
                 sHangoutTitle = getTextFromNodes(elements[i], true);
 
-            } else if (elClass.startsWith("Chat__Wrap-")) {
+            } else if (tmpClassName.startsWith("Chat__Wrap-")) {
                 // REMOVED XX1 - observer.observe(elements[i].children[0], config);
                 //elements[i].parentNode.parentNode.style.zIndex = -1;
                 chatDiv = elements[i].children[0];
@@ -2302,7 +2138,7 @@ function lookForVideoWrap_OLD() {
                 } catch (e) {
                     alert('error getting chat controls');
                 }
-            } else if (elClass.startsWith("Controls__ControlWrap")) {
+            } else if (tmpClassName.startsWith("Controls__ControlWrap")) {
                 //Studio__ControlRow
                 if (gotWrap) {
                     if (bMakeControlsOnTop) { elements[i].style = 'z-index: 9001;'; }
@@ -2312,7 +2148,7 @@ function lookForVideoWrap_OLD() {
                     //mnuDiv.innerHTML = "FISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISH";
                     //elements[i].insertBefore(mnuDiv,elements[i].children[0]);
                 }
-            } else if (elClass.startsWith("CardRow__Row") || elClass.startsWith("CardRow__Wrap") || elClass.startsWith("Studio__CardRowWrap")) {
+            } else if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
                 /*if (gotWrap) {
                      if (bMakeBackroomOnTop) { elements[i].style.zIndex = '9005'; }
                      if (bMakeBackroomBottom) { elements[i].style.marginBottom = '0px';elements[i].style.marginTop = 'auto'; }
@@ -2320,7 +2156,7 @@ function lookForVideoWrap_OLD() {
                 */
                 SetCardRowWrapSettings(elements[i]);
                 // REMOVED XX1 - observer.observe(elements[i].children[0], config);
-            } else if (elClass.startsWith("Card__Wrap") || elClass.startsWith("CardName__Wrap")) {
+            } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("CardName__Wrap")) {
                 processCard__Wrap(elements[i]);
             }
 
@@ -2341,6 +2177,74 @@ function lookForVideoWrap_OLD() {
 
 }
 
+
+function doThis() {
+    observer.observe(document.body, config);
+
+    getCookies();
+
+
+    iHeight = Math.round(baseHeight * sizeAdjust);
+    iWidth = Math.round(baseWidth * sizeAdjust);
+
+    setupOuterDiv()
+
+    //    setInterval(lookForVideoWrap,1000);
+
+    window.addEventListener("unload", unLoadPage);
+
+
+
+}
+
+
+
+function turnScriptOnOff() {
+    console.log('turnScriptOnOff:' + bIsOn);
+    bIsOn = !bIsOn;
+    if (bIsOn) {
+        // script has just been turned on
+
+        document.title = 'StreamYard-ForOBS';
+        outerDiv.style.display = 'block';
+        outerDiv.style.visibility = 'visible';
+
+        GrabVideos();
+        resizeExisting();
+
+
+        SetAllCardRowWrapSettings();
+        if (tagsWrap) tagsWrap.style.visibility = 'hidden';
+
+        if (!setupKeyUp) { document.addEventListener('keyup', handleKeyUp); }
+    } else {
+        // script has just been turned off
+        outerDiv.style.display = 'none';
+        outerDiv.style.visibility = 'hidden';
+
+        var elements = document.querySelectorAll('div');
+        var i, iLen;
+
+        var foundStreams = [];
+        var foundNo = 0;
+        var tmpClassName = '';
+        for (i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Stream__Wrap")) {
+                // elements[i].setAttribute('style','');
+                elements[i].setAttribute('style', elements[i].getAttribute('origstyle'));
+                // } else if (((tmpClassName) + '').indexOf("Name__NameWrap") != -1) {
+                //     elements[i].setAttribute('style', elements[i].getAttribute('origstyle'));
+            }
+
+        }
+
+        tagsWrap.style.visibility = 'visible';
+
+        resetOrigStyles();
+
+    }
+}
 
 
 
@@ -2400,6 +2304,13 @@ function moveSelectStream(v) {
 
     }
 }
+
+function streamClick(e) {
+    //alert('streamClick');
+    //alert(e.getAttribute('currentpos'));
+    selectWindow(e.getAttribute('currentpos'));
+}
+
 function emptyImageClick(e) {
     selectWindow(e.getAttribute('currentpos'));
 }
@@ -2425,6 +2336,38 @@ function showHideOuterDiv() {
 }
 */
 
+function selectWindow(v) {
+
+    var vals = v.split("|");
+    selectedRow = 1 * vals[0];
+    selectedCol = 1 * vals[1];
+
+    //if (moveSelect.value != v) moveSelect.value = v;
+
+    if (chatWindow) {
+        var extSelect = chatWindow.document.getElementById("selectRowCol");
+        if (extSelect.value != v) extSelect.value = v;
+
+        var sName = document.getElementById('StreamerName-R' + selectedRow + '-C' + selectedCol).textContent;
+        chatWindow.document.getElementById("rowColSelectDescription").innerHTML = sName;
+
+        var dltbl = chatWindow.document.getElementById("duplicatedLayoutTbl");
+        var oRow, oCol
+        for (var iRow = 0; iRow < rows; iRow++) {
+            oRow = dltbl.rows[iRow];
+            for (var iCol = 0; iCol < cols; iCol++) {
+                oCol = oRow.cells[iCol];
+                if (iRow == selectedRow && iCol == selectedCol) {
+                    oCol.style.backgroundColor = '#ff6d57';
+                } else {
+                    oCol.style.backgroundColor = '#ffffff';
+                }
+            }
+        }
+    }
+
+}
+
 function changeRowCol(newRows, newCols) {
     rows = newRows;
     cols = newCols;
@@ -2444,6 +2387,78 @@ function changeRowCol(newRows, newCols) {
 
 
 
+
+function getCookies() {
+    var tmpCookie = window.readCookie('davesiz');
+    if (!isNaN(tmpCookie)) { sizeAdjust = 1.00 * tmpCookie; }
+    tmpCookie = window.readCookie('daverows');
+    if (!isNaN(tmpCookie)) { rows = 1 * tmpCookie; }
+    tmpCookie = window.readCookie('davecols');
+    if (!isNaN(tmpCookie)) { cols = 1 * tmpCookie; }
+    tmpCookie = window.readCookie('davebg');
+    if (tmpCookie) { backgroundColour = tmpCookie; }
+    tmpCookie = window.readCookie('davenamebg');
+    if (tmpCookie) { backgroundColourName = tmpCookie; }
+    tmpCookie = window.readCookie('davebgty');
+    if (tmpCookie) {
+        backgroundType = tmpCookie;
+        if (backgroundType == 'simg') {
+            tmpCookie = window.readCookie('davebgimg');
+            if (tmpCookie) {
+                sIm = tmpCookie;
+                if (('' + sIm) == '') { sIm = 'https://i.imgur.com/h4cjsdX.png'; }
+            }
+            tmpCookie = window.readCookie('davebgsty');
+            if (tmpCookie) { eslStyle = tmpCookie; }
+        }
+    }
+    tmpCookie = window.readCookie('davenamefg');
+    if (tmpCookie) { foregroundColourName = tmpCookie; }
+    tmpCookie = window.readCookie('davebrontop');
+    if (tmpCookie) { if (tmpCookie == 'N') { bMakeBackroomOnTop = false; } }
+    tmpCookie = window.readCookie('davebrbtm');
+    if (tmpCookie) { if (tmpCookie == 'N') { bMakeBackroomBottom = false; } }
+
+    tmpCookie = window.readCookie('davenamesize');
+    if (!isNaN(tmpCookie)) { nameTextSize = 1 * tmpCookie; nameHeight = nameTextSize + 10; }
+
+    tmpCookie = window.readCookie('davegapwid');
+    if (!isNaN(tmpCookie)) { iGapWidthBetween = 1 * tmpCookie; }
+    tmpCookie = window.readCookie('davegaphig');
+    if (!isNaN(tmpCookie)) { iGapHeightBetween = 1 * tmpCookie; }
+
+    tmpCookie = window.readCookie('daveWSk');
+    if (tmpCookie) { sWSKeys = tmpCookie.split('#$'); }
+    tmpCookie = window.readCookie('daveWSa');
+    if (tmpCookie) { sWSAliases = tmpCookie.split('#$'); }
+
+    for (var i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+        tmpCookie = window.readCookie('daveWSP_' + i);
+        if (tmpCookie) { sRemoteWSPerm[sWSKeys[i]] = tmpCookie; }
+    }
+
+    tmpCookie = window.readCookie('daveCHP');
+    if (tmpCookie) { sRemoteChatPerm = tmpCookie; }
+
+    tmpCookie = window.readCookie('daveWSms');
+    if (!isNaN(tmpCookie)) { iMS_CheckWS = 1 * tmpCookie; }
+    if (iMS_CheckWS < 1000) { iMS_CheckWS = 5000 }
+
+    tmpCookie = window.readCookie('daveAA'); if (tmpCookie) { if (tmpCookie == 'Y') { bAutoAdd = true; } }
+    tmpCookie = window.readCookie('daveAAH'); if (tmpCookie) { if (tmpCookie == 'Y') { bAutoAddHost = true; } }
+
+    tmpCookie = window.readCookie('daveRFS'); if (tmpCookie) { if (tmpCookie == 'Y') { bForce_RemainFullScreen = true; } }
+
+    tmpCookie = window.readCookie('daveEAK'); if (tmpCookie) { if (tmpCookie == 'N') { bEnabledArrowKeys = false; } }
+
+    tmpCookie = window.readCookie('daveHEV'); if (tmpCookie) { if (tmpCookie == 'N') { bStartUp_IfHost_EnableView = false; } }
+    tmpCookie = window.readCookie('daveHOTW'); if (tmpCookie) { if (tmpCookie == 'N') { bStartUp_IfHost_ShowTidyWindow = false; } }
+    tmpCookie = window.readCookie('daveGEV'); if (tmpCookie) { if (tmpCookie == 'Y') { bStartUp_IfGuest_EnableView = true; } }
+    tmpCookie = window.readCookie('daveGOTW'); if (tmpCookie) { if (tmpCookie == 'Y') { bStartUp_IfGuest_ShowTidyWindow = true; } }
+
+
+
+}
 
 
 
@@ -2572,6 +2587,7 @@ function externalWindow_clickOnOffScript() {
         if (btn.value == 'Turn View Off') { btn.value = 'Turn View On'; } else { btn.value = 'Turn View Off'; }
     } catch (e) { }
     turnScriptOnOff();
+
 }
 
 
@@ -2749,8 +2765,8 @@ function externalWindow_populateDuplicatedLayout() {
         for (var iCol = 0; iCol < cols; iCol++) {
             var cell = row.insertCell(iCol);
             cell.style = 'border:1px solid black;width:30px;height:20px;';
-            cell.setAttribute('position', iRow + '|' + iCol)
-            cell.addEventListener("click", function () { externalWindow_changeSelectRowCol(this.getAttribute('position')); });
+            cell.setAttribute('pos', iRow + '|' + iCol)
+            cell.addEventListener("click", function () { externalWindow_changeSelectRowCol(this.getAttribute('pos')); });
         }
     }
 
@@ -2762,21 +2778,21 @@ function externalWindow_changeSelectRowCol(v) {
 
 function externalWindow_changeWidthGap() {
     var iNum = chatWindow.document.getElementById("gapWidth").value;
-    if (!isNaN(iNum)) { gapWidthBetween = 1 * iNum; window.writeCookie('davegapwid', gapWidthBetween); }
+    if (!isNaN(iNum)) { iGapWidthBetween = 1 * iNum; window.writeCookie('davegapwid', iGapWidthBetween); }
     changeRowCol(rows, cols);
 }
 
 function externalWindow_emptyImgChange() {
     sIm = chatWindow.document.getElementById('emptyImg').value;
-    CELL_STYLE = chatWindow.document.getElementById('emptySty').value;
+    eslStyle = chatWindow.document.getElementById('emptySty').value;
     window.writeCookie('davebgimg', sIm);
-    window.writeCookie('davebgsty', CELL_STYLE);
+    window.writeCookie('davebgsty', eslStyle);
     resizeEmptySlots();
 }
 
 function externalWindow_changeHeightGap() {
     var iNum = chatWindow.document.getElementById("gapHeight").value;
-    if (!isNaN(iNum)) { settings.gapHeightBetween = 1 * iNum; window.writeCookie('davegaphig', settings.gapHeightBetween); }
+    if (!isNaN(iNum)) { iGapHeightBetween = 1 * iNum; window.writeCookie('davegaphig', iGapHeightBetween); }
     changeRowCol(rows, cols);
 }
 
@@ -2801,7 +2817,7 @@ function externalWindow_getSettingsHTML() {
 
     //video size
     sHTML += '</select></td><td style="border-left:1px solid black;">Video Size:</td><td><Select id="videoSize">';
-    for (dNum = 1.0; dNum < 3.6; dNum = dNum + 0.1) { sSelected = ''; if (settings.sizeAdjust == dNum.toFixed(1)) { sSelected = ' SELECTED'; } sHTML += '<option value="' + dNum.toFixed(1) + '"' + sSelected + '>' + dNum.toFixed(1) + '</option>'; }
+    for (dNum = 1.0; dNum < 3.6; dNum = dNum + 0.1) { sSelected = ''; if (sizeAdjust == dNum.toFixed(1)) { sSelected = ' SELECTED'; } sHTML += '<option value="' + dNum.toFixed(1) + '"' + sSelected + '>' + dNum.toFixed(1) + '</option>'; }
     sHTML += '</select></td>';
     // Name Forecolour
     sHTML += '<td style="border-left:1px solid black;">Name ForeColour:</td><td><input id="namefgColour" value="' + foregroundColourName + '" type="color" style="height:25px;width:25px;"/></td>';
@@ -2833,8 +2849,8 @@ function externalWindow_getSettingsHTML() {
 
 
     // Gap Width
-    sHTML += '<td style="border-left:1px solid black;" colspan="2"><table><tr><td>Gap </td><td>Width:</td><td><input type="text" style="width:30px;" id="gapWidth" value="' + gapWidthBetween + '" /> </td>';
-    sHTML += '<td>Height: </td><td><input type="text" style="width:30px;" id="gapHeight" value="' + settings.gapHeightBetween + '" /></td></tr></table></td>';
+    sHTML += '<td style="border-left:1px solid black;" colspan="2"><table><tr><td>Gap </td><td>Width:</td><td><input type="text" style="width:30px;" id="gapWidth" value="' + iGapWidthBetween + '" /> </td>';
+    sHTML += '<td>Height: </td><td><input type="text" style="width:30px;" id="gapHeight" value="' + iGapHeightBetween + '" /></td></tr></table></td>';
 
     sHTML += '<td style="border-left:1px solid black;"></td><td></td>';
 
@@ -2861,7 +2877,7 @@ function externalWindow_getSettingsHTML() {
     sHTML += '<td style="border-left:1px solid black;" colspan="2">';
 
     if (backgroundType == 'simg') {
-        sHTML += '<table><tr><td>Empty Style: </td><td><input style="width:100px;" type="text" id="emptySty" value="' + CELL_STYLE + ' " /></td></tr></table>';
+        sHTML += '<table><tr><td>Empty Style: </td><td><input style="width:100px;" type="text" id="emptySty" value="' + eslStyle + ' " /></td></tr></table>';
     }
 
     sHTML += '</td>';
@@ -3058,8 +3074,8 @@ function createSettingsWindow() {
 
 function tryCloneStuff() {
     var elements = document.querySelectorAll('video');
-    var i, elLength;
-    for (i = 0, elLength = elements.length; i < elLength; i++) {
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
         var video2 = elements[i].cloneNode(true);
 
         //tidySettingsWindow.document.getElementById('attempt').appendChild(video2);
@@ -3162,7 +3178,7 @@ function createExternalWindow() {
 
         try {
             if (chatDiv) {
-                for (var i = 0, elLength = chatDiv.children.length; i < elLength; i++) {
+                for (var i = 0, iLen = chatDiv.children.length; i < iLen; i++) {
                     processChatItemElement(chatDiv.children[i], false);
                 }
             }
@@ -3192,14 +3208,14 @@ function externalWindow_PopulateRemoteSettings() {
         ' <input type="button" id="addWSKey" value="Add WS Key" />' +
         ' <input type="button" id="saveRemoteSettings" value="Save Remote Settings" />';
 
-    var i, elLength
+    var i, iLen
     r = tbl.insertRow(-1);
     // r.style='border:1px solid black;';
     c = r.insertCell(-1);
     c = r.insertCell(-1);
     c.innerHTML = 'Chat';
     c.style = 'vertical-align:top;text-align:center;border:1px solid black;';
-    for (i = 0, elLength = sWSKeys.length; i < elLength; i++) {
+    for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
         externalWindow_addWSTopCell(r, i);
     }
     var sCol1 = '#ccffcc';
@@ -3219,7 +3235,7 @@ function externalWindow_PopulateRemoteSettings() {
             sChecked = ' checked=checked';
         }
         c.innerHTML = '<input type="checkbox"' + sChecked + ' id="remoteChat_' + k + '" />';
-        for (i = 0, elLength = sWSKeys.length; i < elLength; i++) {
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
             sChecked = '';
 
             if (sRemoteWSPerm[sWSKeys[i]].charAt(k) == '1') {
@@ -3257,7 +3273,7 @@ function externalWindow_saveRemoteSettings(tbl) {
     var newAliases = [];
     var newRemoteWSPerm = {};
     var oKey;
-    var colNo, key, alias, sPerms, i, elLength;
+    var colNo, key, alias, sPerms, i, iLen;
     var sNewMSCheckWS = chatWindow.document.getElementById('remoteWSPollPeriod').value;
     var bCommitSave = false;
     var sNewRemoteChatPerm;
@@ -3267,7 +3283,7 @@ function externalWindow_saveRemoteSettings(tbl) {
 
         sPerms = '';
 
-        for (i = 0, elLength = permissionCommands.length; i < elLength; i++) {
+        for (i = 0, iLen = permissionCommands.length; i < iLen; i++) {
             if (chatWindow.document.getElementById('remoteChat_' + i).checked) {
                 sPerms += '1';
             } else {
@@ -3292,7 +3308,7 @@ function externalWindow_saveRemoteSettings(tbl) {
 
                 sPerms = '';
 
-                for (i = 0, elLength = permissionCommands.length; i < elLength; i++) {
+                for (i = 0, iLen = permissionCommands.length; i < iLen; i++) {
                     if (chatWindow.document.getElementById('remoteWS_' + colNo + '_' + i).checked) {
                         sPerms += '1';
                     } else {
@@ -3313,7 +3329,7 @@ function externalWindow_saveRemoteSettings(tbl) {
         bCommitSave = false;
     }
     if (bCommitSave) {
-        for (i = 0, elLength = sWSKeys.length; i < elLength; i++) {
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
             window.eraseCookie('daveWSP_' + i);
         }
         sWSKeys = newKeys;
@@ -3332,7 +3348,7 @@ function externalWindow_saveRemoteSettings(tbl) {
         window.writeCookie('daveWSk', newKeys.join('#$'));
         window.writeCookie('daveWSa', newAliases.join('#$'));
 
-        for (i = 0, elLength = sWSKeys.length; i < elLength; i++) {
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
             window.writeCookie('daveWSP_' + i, sRemoteWSPerm[sWSKeys[i]]);
         }
 
