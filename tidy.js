@@ -19,7 +19,6 @@
 const DEFAULT_GAP = 3;
 const CELL_STYLE = 'border: 1px solid black;';
 
-
 /*******************  
    SINGELTONS
 *******************/
@@ -78,13 +77,13 @@ const tidyState = {
 }
 
 const original = {
-    textFontSize = '',
-    textPadding = '',
-    textColor = '',
-    textHeight = '',
-    micHeight = '',
-    micWidth = '',
-    micFill = '',
+    textFontSize: '',
+    textPadding: '',
+    textColor: '',
+    textHeight: '',
+    micHeight: '',
+    micWidth: '',
+    micFill: '',
 }
 
 
@@ -93,20 +92,11 @@ const original = {
 *******************/
 
 var sVersion = '0.253.00000';
-var MASTER_kazz_override = true;
 var WS_ON = true;
 var DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC = false;
 var checkWSInterval;
-var iMS_CheckWS = 5000;
-var sWSKeys = [];
-var sWSAliases = [];
 var sRemoteWSPerm = {};
 var sRemoteChatPerm = '';
-var permissionCommands = ['ME_MIC_OFF', 'ME_MIC_ON', 'ME_MIC_TOGGLE',
-    'ME_CAM_ON', 'ME_CAM_OFF', 'ME_CAM_TOGGLE',
-    'TIDY_VIEW_ON', 'TIDY_VIEW_OFF', 'TIDY_VIEW_TOGGLE',
-    'ADD_SELF', 'REMOVE_SELF', 'MUTE_SELF', 'UNMUTE_SELF',
-    'ADD_OTHER', 'REMOVE_OTHER', 'MUTE_OTHER', 'UNMUTE_OTHER'];
 var LAST_SOLO_LAYOUT_BUTTON;
 var RemotelyLogConnectDisconnectMessage = true;
 var googleTagLengthChecked = 0;
@@ -120,7 +110,6 @@ var chatWindow;
 var openedChatWindow = false;
 var tidySettingsWindow;
 var tidySettingsWindowOpen = false;
-
 var iDoneX = 0;
 var bIsHost = false;
 var hostName = '';
@@ -136,7 +125,6 @@ var rowChatColour = 1;
 var rowChatColour1 = '#c9ffd0'
 var rowChatColour2 = '#d7bdff';
 var rowChatColourMe = '#ffba4a';
-
 var dave_chatTextBox;
 var chatTextArea, chatSubmitBtn;
 
@@ -203,6 +191,8 @@ function loadSettings() {
 function loadTidy() {
     console.info("Tidy: Initializing");
 
+    // Create an observer instance linked to the callback function
+    const observer = new MutationObserver(callback);
     observer.observe(document.body, config);
 
     settings = { ...settings, ...loadSettings() };
@@ -214,26 +204,6 @@ function loadTidy() {
 
     window.addEventListener("unload", unloadTidy);
     console.info("Tidy: Initialized");
-}
-
-function loadSaveSettings() {
-    // TODO this function should be deprecated
-    var tmpCookie = window.readCookie('daveWSk');
-    if (tmpCookie) { sWSKeys = tmpCookie.split('#$'); }
-    tmpCookie = window.readCookie('daveWSa');
-    if (tmpCookie) { sWSAliases = tmpCookie.split('#$'); }
-
-    for (var i = 0, elLength = sWSKeys.length; i < elLength; i++) {
-        tmpCookie = window.readCookie('daveWSP_' + i);
-        if (tmpCookie) { sRemoteWSPerm[sWSKeys[i]] = tmpCookie; }
-    }
-
-    tmpCookie = window.readCookie('daveCHP');
-    if (tmpCookie) { sRemoteChatPerm = tmpCookie; }
-
-    tmpCookie = window.readCookie('daveWSms');
-    if (!isNaN(tmpCookie)) { iMS_CheckWS = 1 * tmpCookie; }
-    if (iMS_CheckWS < 1000) { iMS_CheckWS = 5000 }
 }
 
 function setupOuterDiv() {
@@ -751,12 +721,6 @@ function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-
-
-
-
-
-
 function formatAMPM(date) {
     var hours = date.getHours();
     var minutes = date.getMinutes();
@@ -833,7 +797,6 @@ function clickCardButtonForEveryoneButHost(sAriaLabel) {
         var tmpName = ''
         for (var i = 0, elLength = elements.length; i < elLength; i++) {
             elClass = elements[i].className;
-            //console.log('clickCardButtonForEveryoneButHost '  + elClass);
             if (elClass.startsWith("Card__NameText") || (elClass.indexOf('CardName__StyledText') != -1)) {
                 tmpName = elements[i].textContent;
                 if (tmpName != tmpHostName) {
@@ -852,9 +815,6 @@ function clickCardButtonForEveryoneButHost(sAriaLabel) {
 
 
 function clickCardButton(sName, sAriaLabel) {
-    // sAriaLabel = 'Add ';
-
-    //console.log('clickCardButton ' + sName + ' ' + sAriaLabel);
     var eWraper = FindCardWrapForPerson(sName);
 
     if (eWraper) {
@@ -1117,7 +1077,6 @@ var currentLayout = '';
 var lastLayoutByChoice = -1;
 
 
-
 function cardSoloLayoutClicked(e) {
     //console.log('Aria label: ' + (e.ariaLabel + '').toLowerCase())
     if ((e.ariaLabel + '').toLowerCase().indexOf('exit') != -1) {
@@ -1128,44 +1087,6 @@ function cardSoloLayoutClicked(e) {
         LAST_SOLO_LAYOUT_BUTTON = e;
     }
 }
-/*
-function changedLayoutNOTClicked(layoutButtonType,e) {
-    console.log('changedLayoutNOTClicked current: ' + currentLayout + ', LBC: ' + lastLayoutByChoice + ', new: ' + layoutButtonType);
-    if (layoutButtonType != -1) {
-        if (lastLayoutByChoice != layoutButtonType) {
-            if (bForce_RemainFullScreen && currentLayout == 'buttons_soloLayout') {
-                 console.log('clicking solo layout to prevent removal.: ' + LAST_SOLO_LAYOUT_BUTTON);
-                 buttons_soloLayout.click();
-                //currentLayout = 'buttons_soloLayout';
-                //lastLayoutByChoice = 1;
-            } else {
-
-                switch(layoutButtonType) {
-                    case 1: currentLayout = 'buttons_soloLayout'; break;
-                    case 2: currentLayout = 'buttons_thinLayout'; break;
-                    case 3: currentLayout = 'buttons_groupLayout'; break;
-                    case 4: currentLayout = 'buttons_leaderLayout'; break;
-                    case 5: currentLayout = 'buttons_smallScreenLayout'; break;
-                    case 6: currentLayout = 'buttons_largeScreenLayout'; break;
-                    case 7: currentLayout = 'buttons_fullScreenLayout'; break;
-                        //default: alert('unknown btn:' + layoutButtonType);
-                }
-                //console.log('Layout changed NOT by choice to : ' + layoutButtonType);
-            }
-        }
-    }
-
-}
-*/
-
-/*function forceFullScreenIfNeeded(newCurrentLayout, newLastLayoutByChoice, fromEvent) {
-    if (bForce_RemainFullScreen && lastLayoutByChoice == 1) {
-        buttons_soloLayout.click();
-    } else {
-        currentLayout = newCurrentLayout;
-        lastLayoutByChoice = newLastLayoutByChoice;
-    }
-}*/
 
 function changedLayoutClicked(layoutButtonType, e, fromEvent) {
     //console.log('changedLayoutClicked current: ' + currentLayout + ', LBC: ' + lastLayoutByChoice + ', new: ' + layoutButtonType + ', fromEvent: ' + fromEvent);
@@ -1187,13 +1108,13 @@ function changedLayoutClicked(layoutButtonType, e, fromEvent) {
     }
     //console.log('Layout changed by choice to : ' + layoutButtonType);
 }
+
 /*
 function GrabInitialVideos() {
     showHideOuterDiv();
     GrabVideos();
 }
 */
-
 
 function changeZoom(v) {
     settings.sizeAdjust = 1.00 * v;
@@ -1215,10 +1136,8 @@ var tmpLeft = DEFAULT_GAP;
 var tmpCol = 0;
 var tmpRow = 0;
 
-
 var selectedRow = 0;
 var selectedCol = 0;
-
 
 function moveStream(fromRow, fromCol, toRow, toCol) {
     var txtFrom, txtTo;
@@ -1282,8 +1201,6 @@ function setMicNameFieldFromSVG(e) {
 
 }
 
-
-
 function setNameElement(e) {
     //e.setAttribute("style", '--dave:yes;' + e.style.cssText);
     //e.style.dave = 'yes';
@@ -1340,14 +1257,8 @@ function resetNameComponents() {
                 elements[i].style.height = nameHeight + 'px'
                 elements[i].style.fontSize = nameTextSize + 'px'; //
             }
-
         }
-
-
-
     }
-
-
 }
 
 function setOrigStyle(e) {
@@ -1583,8 +1494,6 @@ function genCallbackWS1(s, r, sF, stF, wsKey) {
     }
 }
 
-function genStatusFunc(s) { }
-
 function processsRemoteCalls(d, wsKey) { for (var i = 0; i < d.length; i++) { processJSONMessage(d[i], wsKey); } }
 
 var checkingForRemoteControlSignals = false;
@@ -1601,29 +1510,6 @@ function checkForRemoteControlSignals() {
     }
 }
 
-function processJSONMessage(o, wsKey) {
-    var t = formatAMPM(new Date), n = '[RemoteWS]', m = '', bShow = true;
-    switch (o.n) {
-        case 'TEST1': m = 'test1 recieved: ' + o.p; break;
-        case 'MIC_ME_OFF': remotePressBtnIfAriaIs(t, muteMeButton, 'Mute microphone', wsKey, 'ME_MIC_OFF'); m = 'Mute Me Recieved'; break;
-        case 'MIC_ME_ON': remotePressBtnIfAriaIs(t, muteMeButton, 'Unmute microphone', wsKey, 'ME_MIC_ON'); m = 'Unmute Me Recieved'; break;
-        case 'MIC_ME_TOGGLE': remotePressBtn(t, muteMeButton, wsKey, 'ME_MIC_TOGGLE'); m = 'Toggle Mute Recieved'; break;
-        case 'CAM_ME_ON': remotePressBtnIfAriaIs(t, camMeButton, 'turn on camera', wsKey, 'ME_CAM_ON'); m = 'Cam On Me Recieved'; break;
-        case 'CAM_ME_OFF': remotePressBtnIfAriaIs(t, camMeButton, 'turn off camera', wsKey, 'ME_CAM_OFF'); m = 'Cam Off Me Recieved'; break;
-        case 'CAM_ME_TOGGLE': remotePressBtn(t, camMeButton, wsKey, 'ME_CAM_TOGGLE'); m = 'Toggle Cam Recieved'; break;
-        case 'SYT_ON': remoteToggleStreamYardTidyView(t, false, true, wsKey, 'TIDY_VIEW_ON'); m = 'Turn On StreamYardTidy Recieved'; break;
-        case 'SYT_OFF': remoteToggleStreamYardTidyView(t, true, false, wsKey, 'TIDY_VIEW_OFF'); m = 'Turn Off StreamYardTidy Recieved'; break;
-        case 'SYT_TOGGLE': remoteToggleStreamYardTidyView(t, false, false, wsKey, 'TIDY_VIEW_TOGGLE'); m = 'Toggle StreamYardTidy Recieved'; break;
-
-        /*case 'SYT_ON': if (!bIsOn) {externalWindow_clickOnOffScript();} m = 'Turn On StreamYardTidy Recieved'; break;
-        case 'SYT_OFF': if (bIsOn) {externalWindow_clickOnOffScript();} m = 'Turn Off StreamYardTidy Recieved'; break;
-        case 'SYT_TOGGLE': externalWindow_clickOnOffScript(); m = 'Toggle StreamYardTidy Recieved'; break;
- */
-        default: m = 'Unknown JSON Msg: ' + o.n + '(' + o.p + ')'; break;
-    }
-
-    if (bShow) { addToChatWindow(t, n, m + ' by ' + sWSAliases[sWSKeys.indexOf(wsKey)]); }
-}
 
 function remoteToggleStreamYardTidyView(t, ifOn, ifOff, wsKey, sPerm) {
     var sAlias = sWSAliases[sWSKeys.indexOf(wsKey)];
@@ -1725,158 +1611,6 @@ function processMessage(t, n, m) {
     }
 
     return bShow;
-}
-
-
-function remoteChatHasPermission(sPermission) { return remoteHasPermission(sRemoteChatPerm, sPermission); }
-function remoteWSHasPermission(sWSKey, sPermission) { return remoteHasPermission(sRemoteWSPerm[sWSKey], sPermission); }
-
-function remoteHasPermission(permString, sPermission) {
-    var r = false;
-    try {
-        var permIndex = permissionCommands.indexOf(sPermission);
-        if (permIndex != -1) {
-            if (permString.charAt(permIndex) == '1') {
-                r = true;
-            }
-        }
-    } catch (e) { }
-    return r;
-}
-
-function remoteFunction_ShowBackroom(sTime, sByWho) {
-    addToChatWindow(sTime, '[Tidy]', sByWho + ' requested backroom.');
-    sendMessageOurSelf('People in the backroom : ');
-    var aN = getNamesFromBackRoom().split("||##|");
-    var aParts;
-    for (var i = 0; i < aN.length; i++) {
-        if (aN[i].length > 0) {
-            aParts = aN[i].split("|#|");
-            sendMessageOurSelf(' ' + aParts[0] + '. ' + aParts[1]);
-        }
-
-    }
-
-
-}
-
-function remoteFunction_ShowVersion(sTime, sByWho) {
-    addToChatWindow(sTime, '[Tidy]', sByWho + ' requested version.');
-    sendMessageOurSelf('Tidy Version : ' + sVersion);
-}
-
-
-
-function remoteFunction_Mute(sTime, sByWho, sToWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    if (sByWho == sToWho) {
-        bGotPermission = remoteChatHasPermission('MUTE_SELF');
-        sAuthFail = sByWho + ' Failed to remotely mute ' + sToWho + ', Permission MUTE_SELF not set.';
-    } else {
-        bGotPermission = remoteChatHasPermission('MUTE_OTHER');
-        sAuthFail = sByWho + ' Failed to remotely mute ' + sToWho + ', Permission MUTE_OTHER not set.';
-    }
-    if (bGotPermission) {
-        remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-}
-
-function remoteFunction_Unmute(sTime, sByWho, sToWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    if (sByWho == sToWho) {
-        bGotPermission = remoteChatHasPermission('UNMUTE_SELF');
-        sAuthFail = sByWho + ' Failed to remotely unmute ' + sToWho + ', Permission UNMUTE_SELF not set.';
-    } else {
-        bGotPermission = remoteChatHasPermission('UNMUTE_OTHER');
-        sAuthFail = sByWho + ' Failed to remotely unmute ' + sToWho + ', Permission UNMUTE_OTHER not set.';
-    }
-    if (bGotPermission) {
-        remoteFunction_Generic(sTime, sByWho, sToWho, 'Unmute ', sByWho + ' remotely unmuted ' + sToWho, sByWho + ' Failed to remotely unmute ' + sToWho);
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-}
-
-function remoteFunction_Add(sTime, sByWho, sToWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    if (sByWho == sToWho) {
-        bGotPermission = remoteChatHasPermission('ADD_SELF');
-        sAuthFail = sByWho + ' Failed to remotely add ' + sToWho + ', Permission ADD_SELF not set.';
-    } else {
-        bGotPermission = remoteChatHasPermission('ADD_OTHER');
-        sAuthFail = sByWho + ' Failed to remotely add ' + sToWho + ', Permission ADD_OTHER not set.';
-    }
-    if (bGotPermission) {
-        remoteFunction_Generic(sTime, sByWho, sToWho, 'Add ', sByWho + ' remotely added ' + sToWho + ' to stream', sByWho + ' Failed to remotely add ' + sToWho + ' to stream');
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-
-}
-
-function remoteFunction_Remove(sTime, sByWho, sToWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    if (sByWho == sToWho) {
-        bGotPermission = remoteChatHasPermission('REMOVE_SELF');
-        sAuthFail = sByWho + ' Failed to remotely remove ' + sToWho + ', Permission REMOVE_SELF not set.';
-    } else {
-        bGotPermission = remoteChatHasPermission('REMOVE_OTHER');
-        sAuthFail = sByWho + ' Failed to remotely remove ' + sToWho + ', Permission REMOVE_OTHER not set.';
-    }
-    if (bGotPermission) {
-        remoteFunction_Generic(sTime, sByWho, sToWho, 'Remove ', sByWho + ' remotely removed ' + sToWho + ' from stream', sByWho + ' Failed to remotely remove ' + sToWho + ' from stream');
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-
-}
-
-function remoteFunction_MuteAll(sTime, sByWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    bGotPermission = remoteChatHasPermission('MUTE_OTHER');
-    sAuthFail = sByWho + ' Failed to remotely Mute  all, Permission MUTE_OTHER not set.';
-
-    if (bGotPermission) {
-        //remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
-        bMuteEveryone = true;
-        try { chatWindow.document.getElementById("chkMuteGuests").checked = true } catch (e) { }
-        clickCardButtonForEveryoneButHost('Mute');
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-}
-
-function remoteFunction_UnMuteAll(sTime, sByWho) {
-    var bGotPermission = false;
-    var sAuthFail = '';
-    bGotPermission = remoteChatHasPermission('UNMUTE_OTHER');
-    sAuthFail = sByWho + ' Failed to remotely unMute  all, Permission MUTE_OTHER not set.';
-
-    if (bGotPermission) {
-        //remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
-        bMuteEveryone = false;
-        try { chatWindow.document.getElementById("chkMuteGuests").checked = false } catch (e) { }
-        clickCardButtonForEveryoneButHost('Unmute');
-    } else {
-        addToChatWindow(sTime, '[Tidy]', sAuthFail);
-    }
-}
-
-
-function remoteFunction_Generic(sTime, sByWho, sToWho, sAction, sSuccess, sFail) {
-
-    if (sToWho == '[Me]') {
-        sToWho = getHostName();
-    }
-
-    if (clickCardButton(sToWho, sAction) == 1) { addToChatWindow(sTime, '[Tidy]', sSuccess); } else { addToChatWindow(sTime, '[Tidy]', sFail) };
 }
 
 function addToChatWindow(t, n, m) {
@@ -2208,10 +1942,6 @@ const callback = function (mutationsList, observer) {
 
 
 };
-
-// Create an observer instance linked to the callback function
-const observer = new MutationObserver(callback);
-
 
 
 function lookForOtherGubbins() {
