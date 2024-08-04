@@ -1,0 +1,3487 @@
+'use strict';
+
+// ==UserScript==
+// @name         StreamYard Tidy
+// @namespace    http://tampermonkey.net/
+// @version      0.252.00030
+// @description  try to take over the world!
+// @updateURL    https://quiz.zenidge.net/LiveScripts/StreamYardTidy.user.js
+// @downloadURL  https://quiz.zenidge.net/LiveScripts/StreamYardTidy.user.js
+// @author       Critical Cripple
+// @match        https://streamyard.com/*
+// @grant        none
+// ==/UserScript==
+
+/* UNMAPPED VARS */
+
+var sVersion = '0.252.00030';
+
+var MASTER_kazz_override = true;
+
+var WS_ON = true;
+var DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC = false;
+
+var checkWSInterval;
+var iMS_CheckWS = 5000;
+var sWSKeys = [];
+var sWSAliases = [];
+var sRemoteWSPerm = {};
+var sRemoteChatPerm = '';
+var permissionCommands = ['ME_MIC_OFF', 'ME_MIC_ON', 'ME_MIC_TOGGLE',
+    'ME_CAM_ON', 'ME_CAM_OFF', 'ME_CAM_TOGGLE',
+    'TIDY_VIEW_ON', 'TIDY_VIEW_OFF', 'TIDY_VIEW_TOGGLE',
+    'ADD_SELF', 'REMOVE_SELF', 'MUTE_SELF', 'UNMUTE_SELF',
+    'ADD_OTHER', 'REMOVE_OTHER', 'MUTE_OTHER', 'UNMUTE_OTHER'];
+
+
+
+var LAST_SOLO_LAYOUT_BUTTON;
+
+var RemotelyLogConnectDisconnectMessage = true;
+
+var googleTagLengthChecked = 0;
+var checkingGoogleTags = false;
+var googleTagInterval;
+
+
+var slots = 12;
+var baseHeight = 135;
+var baseWidth = 233;
+var iGap = 3; //13; //3;
+var iInfoGap = 35;
+
+var doConnectToOBS = false;
+var backgroundType = 'img';
+
+var tidyExternalWindow;
+var chatWindow;
+var openedChatWindow = false;
+var tidySettingsWindow;
+var tidySettingsWindowOpen = false;
+
+var eslStyle = 'border: 1px solid black;'; //''; //
+//var eslStyle = ''; //''; //
+
+var iDoneX = 0;
+var bIsOn = false;
+var bIsHost = false;
+var hostName = '';
+var sssK = '';
+var clientID = '';
+
+var setupKeyUp = false;
+
+var State = "UNKNOWN";
+
+
+var cells = [];
+var gotWrap = false;
+var tagsWrap;
+var lookingForWrap = false;
+var rowChatColour = 1;
+var rowChatColour1 = '#c9ffd0'
+var rowChatColour2 = '#d7bdff';
+var rowChatColourMe = '#ffba4a';
+
+var dave_chatTextBox;
+var chatTextArea, chatSubmitBtn;
+
+
+/* SETTINGS */
+let tidySettings = {
+    debugMode: true,
+    sizeAdjust: 1.00,
+    rows: 2,
+    cols: 3,
+    backgroundColour: '#FF0000',
+    backgroundColourName: '#00FF00',
+    foregroundColourName: '#000000',
+    makeControlsOnTop: true,
+    makeBackroomOnTop: true,
+    makeBackroomBottom: true,
+    emptyCellImage: 'https://i.imgur.com/h4cjsdX.png',
+    gapWidthBetween: 3,
+    gapHeightBetween: 3,
+    guestNameTextSize: 20,
+    guestNameHeight: 30, // text size + 10
+    newSettingsSystemEnable: true,
+    autoAddHost: false,
+    autoAdd: false,
+    enabledArrowKeys: true,
+    muteEveryone: false,
+    remoteControlWebService: true,
+    remoteControlChat: true,
+    startUp_IfHost_EnableView: true,
+    startUp_IfHost_ShowTidyWindow: true,
+    startUp_IfGuest_EnableView: false,
+    startUp_IfGuest_ShowTidyWindow: false,
+    force_RemainFullScreen: false,
+    forceFullScreen: false
+}
+
+function saveSettings(settings) {
+    localStorage.setItem("tidy-settings", JSON.stringify(settings));
+}
+
+function loadSettings() {
+    const savedSettings = localStorage.getItem('tidy-settings');
+    if (savedSettings) {
+        return JSON.parse(savedSettings)
+    }
+
+    return {}
+}
+
+
+/* STATE */
+const tidyState = {
+    outerDiv: undefined,
+    emptySlots: [],
+    buttonDivs: []
+}
+
+/* TIDY LOAD / UNLOAD */
+if (settings.debugMode) {
+    console.warn('Tidy: Running in debug mode!');
+}
+
+(function () {
+    setTimeout(initTidy, 500);
+})();
+
+
+function initTidy() {
+    console.info("Tidy: Initializing Plugin");
+
+    observer.observe(document.body, config);
+
+    settings = { ...settings, ...loadSettings() };
+
+    iHeight = Math.round(baseHeight * settings.sizeAdjust);
+    iWidth = Math.round(baseWidth * settings.sizeAdjust);
+
+    setupOuterDiv()
+
+    //    setInterval(lookForVideoWrap,1000);
+
+    window.addEventListener("unload", unLoadPage);
+}
+
+
+function loadSaveSettings() {
+    // TODO this function should be deprecated
+    var tmpCookie = window.readCookie('daveWSk');
+    if (tmpCookie) { sWSKeys = tmpCookie.split('#$'); }
+    tmpCookie = window.readCookie('daveWSa');
+    if (tmpCookie) { sWSAliases = tmpCookie.split('#$'); }
+
+    for (var i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+        tmpCookie = window.readCookie('daveWSP_' + i);
+        if (tmpCookie) { sRemoteWSPerm[sWSKeys[i]] = tmpCookie; }
+    }
+
+    tmpCookie = window.readCookie('daveCHP');
+    if (tmpCookie) { sRemoteChatPerm = tmpCookie; }
+
+    tmpCookie = window.readCookie('daveWSms');
+    if (!isNaN(tmpCookie)) { iMS_CheckWS = 1 * tmpCookie; }
+    if (iMS_CheckWS < 1000) { iMS_CheckWS = 5000 }
+}
+
+function setupOuterDiv() {
+    if (!state.outerDiv) {
+        createOuterDiv();
+    }
+
+    state.outerDiv.style.width = ((config.cols * (iWidth + gapWidthBetween) + iGap + iGap - gapWidthBetween)) + 'px';
+    state.outerDiv.style.height = (((config.rows) * (iHeight + settings.gapHeightBetween + iGap + nameHeight)) + iGap - settings.gapHeightBetween) + 'px';
+
+    var iCol, iRow;
+    var iLeft, iTop = iHeight + iGap + iGap;
+    var iNo = 0;
+
+    for (iRow = 0; iRow < config.rows; iRow++) {
+        iLeft = iGap;
+        for (iCol = 0; iCol < config.cols; iCol++) {
+
+
+            var iImgLeft = iGap + (iCol * (iWidth + gapWidthBetween));
+            var iImgTop = iGap + (iRow * (iHeight + iGap + nameHeight + settings.gapHeightBetween));
+
+            //'http://quiz.zenidge.net/EmptySlot-Point.png'; //
+
+            state.emptySlots[iNo].src = sIm; //'https://i.imgur.com/h4cjsdX.png'; //'file:///D:/Users/Pictures/EmptySlot.png';
+            state.emptySlots[iNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + iImgTop + 'px; left: ' + iImgLeft + 'px; width: ' + iWidth + 'px; height: ' + iHeight + 'px;  background-color: green;' + eslStyle);
+
+            var pos = iRow + "|" + iCol;
+
+            state.emptySlots[iNo].setAttribute('currentpos', pos);
+            state.emptySlots[iNo].addEventListener("click", function () { emptyImageClick(this); }, false);
+
+            settings.buttonDivs[iNo].setAttribute('row', iRow)
+            settings.buttonDivs[iNo].setAttribute('col', iCol)
+            //visibility:hidden;
+            settings.buttonDivs[iNo].setAttribute('style', 'position: fixed; visibility:hidden; color:black; z-index: 2; padding:2px; top: ' + iTop + 'px; left: ' + iLeft + 'px; width: ' + iWidth + 'px; height: ' + nameHeight + 'px;  background-color: green; border: 1px solid black;');
+            settings.buttonDivs[iNo].id = 'StreamerName-R' + iRow + '-C' + iCol;
+
+            iLeft = iLeft + iWidth + iGap;
+
+            iNo = iNo + 1;
+            if (iNo > (slots - 1)) { iCol = cols; iRow = rows; }
+        }
+        iTop = iTop + iGap + nameHeight + iHeight + iGap;
+    }
+
+    for (; iNo < slots; iNo++) {
+        emptySlots[iNo].setAttribute('style', 'visibility:hidden;');
+    }
+}
+
+
+function unLoadPage() {
+    try {
+        if (openedChatWindow) {
+            if (chatWindow) {
+                chatWindow.document.title = chatWindow.document.title + ' [DISCONNECTED]';
+
+            }
+        }
+        if (bIsOn) {
+            turnScriptOnOff();
+        }
+    } catch (e) { }
+}
+
+
+function clickDaveChatSubmit() {
+    //    chatTextArea.value = dave_chatTextBox.value;
+    //chatTextArea.checkValidity();
+    //chatSubmitBtn.click();
+
+    sendMessageOurSelf(dave_chatTextBox.value);
+    dave_chatTextBox.value = '';
+
+
+}
+
+
+var chatDiv;
+
+var sHangoutTitle = '';
+
+var bProcessingFlip = false;
+var bDoingTimedFlipp = false;
+
+var lastScreenFliip = -1;
+
+function doGoRandomScrenFlip() {
+    if (bDoingTimedFlipp) {
+        if (!bProcessingFlip) {
+            bProcessingFlip = true;
+            var elements = document.querySelectorAll('path');
+            var tmpClassName = '';
+            var tmpEle;
+            var screens = [];
+            var i, iLen;
+            for (i = 0, iLen = elements.length; i < iLen; i++) {
+                if (elements[i].getAttribute('d') == 'M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z') {
+                    screens.push(elements[i]);
+                }
+
+                /*if (elements[i].className.indexOf('ButtonBase__WrapperButton') != -1) {
+                    var sTmp = elements[i].ariaLabel;
+                    if (sTmp == 'Fullscreen layout') {
+                        screens.push(elements[i]);
+                       // got 1
+                    }
+                }
+                */
+            }
+
+            if (screens.length > 0) {
+                var randomNo = getRandomInt(0, screens.length);
+                if (randomNo == lastScreenFliip) { randomNo = getRandomInt(0, screens.length); }
+                if (randomNo == lastScreenFliip) { randomNo = getRandomInt(0, screens.length); }
+                if (randomNo == lastScreenFliip) { randomNo = getRandomInt(0, screens.length); }
+                if (randomNo == lastScreenFliip) { randomNo = getRandomInt(0, screens.length); }
+                lastScreenFliip = randomNo;
+                tmpEle = screens[randomNo];
+                try {
+                    elements = tmpEle.parentNode.parentNode.parentNode.querySelectorAll('button');
+                    for (i = 0, iLen = elements.length; i < iLen; i++) {
+                        if (elements[i].ariaLabel == 'Add to stream') {
+                            elements[i].click();
+                            console.log('Flip...');
+                        }
+                    }
+
+
+                } catch (e) {
+                    console.log('Failed flip...');
+                }
+            }
+            //ButtonBase__WrapperButton
+
+
+
+            setTimeout(doGoRandomScrenFlip, 10000);
+            bProcessingFlip = false;
+        }
+    }
+
+}
+
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+
+
+
+
+
+function SetAllCardRowWrapSettings() {
+    var elements = document.querySelectorAll('div');
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
+            SetCardRowWrapSettings(elements[i]);
+        }
+    }
+}
+
+function SetCardRowWrapSettings(e) {
+    var zIndex = null, marginBottom = null, marginTop = null;
+    if (bIsOn) {
+        // add gubbins
+
+        if (bMakeBackroomOnTop) { zIndex = '9005'; }
+        if (bMakeBackroomBottom) { marginBottom = '0px'; marginTop = 'auto'; }
+
+    }
+
+
+    e.style.zIndex = zIndex;
+    e.style.marginBottom = marginBottom; e.style.marginTop = marginTop;
+}
+
+
+function formatAMPM(date) {
+    var hours = date.getHours();
+    var minutes = date.getMinutes();
+    var ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours < 10 ? '0' + hours : hours;
+    minutes = minutes < 10 ? '0' + minutes : minutes;
+    var strTime = hours + ':' + minutes + ' ' + ampm;
+    return strTime;
+}
+
+var divCardWrap;
+
+function getInitialNamesFromWrap() {
+    if (divCardWrap) {
+        var elements = divCardWrap.querySelectorAll('span');
+        var tmpClassName = '';
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("styled__ClientInfoText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+                addSystemMessageToChatWindow('[Initial]', "'" + elements[i].textContent + "' Connected.");
+            }
+        }
+    }
+}
+
+function getNamesFromBackRoom() {
+    var sRes = '';
+    if (divCardWrap) {
+        var iCount = 0;
+        var elements = divCardWrap.querySelectorAll('span');
+        var tmpClassName = '';
+        var iNo;
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("styled__ClientInfoText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+                iCount++;
+                sRes = sRes + iCount + '|#|' + elements[i].textContent + '||##|';
+            }
+        }
+    }
+    return sRes;
+}
+
+
+
+function FindCardWrapForPerson(sName) {
+    var elements = document.querySelectorAll('span');
+    var tmpClassName = '';
+    var tmpEle;
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        if (elements[i].className.indexOf('CardName__StyledText') != -1) {
+            var sTmp = elements[i].innerText;
+            if (sTmp == sName) {
+                tmpEle = elements[i].parentNode;
+                for (var k = 0; k < 6; k++) {
+                    if (tmpEle.className.indexOf('CardWrap') != -1) {
+                        return tmpEle;
+                    } else {
+                        tmpEle = tmpEle.parentNode;
+                    }
+                }
+            }
+        }
+    }
+}
+
+function clickCardButtonForEveryoneButHost(sAriaLabel) {
+    if (divCardWrap) {
+        var elements = divCardWrap.querySelectorAll('span');
+        var tmpClassName = '';
+        var tmpHostName = getHostName()
+        var tmpName = ''
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            //console.log('clickCardButtonForEveryoneButHost '  + tmpClassName);
+            if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+                tmpName = elements[i].textContent;
+                if (tmpName != tmpHostName) {
+                    if (clickCardButton(elements[i].textContent, sAriaLabel) == 1) {
+                        addSystemMessageToChatWindow('[Tidy]', sAriaLabel + " '" + tmpName + "'.");
+                    } else {
+                        addSystemMessageToChatWindow('[Tidy]', sAriaLabel + " '" + tmpName + "' failed.");
+                    }
+                }
+
+            }
+        }
+    }
+}
+
+
+
+function clickCardButton(sName, sAriaLabel) {
+    // sAriaLabel = 'Add ';
+
+    //console.log('clickCardButton ' + sName + ' ' + sAriaLabel);
+    var eWraper = FindCardWrapForPerson(sName);
+
+    if (eWraper) {
+        var elements = eWraper.querySelectorAll('button');
+        var sTmp;
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            try {
+                sTmp = elements[i].ariaLabel;
+
+                if (sTmp.indexOf(sAriaLabel) != -1) {
+                    elements[i].click();
+                    return 1;
+                }
+            } catch (e) { }
+
+        }
+        return 3;
+
+    } else {
+        return 2;
+    }
+
+}
+
+function getParentNodeWithClass(e, sName) {
+    var tmpClassName = '';
+    var tryParent = true;
+    try {
+        tmpClassName = e.className;
+        //console.log('getParentNodeWithClass: ' + sName + ' / ' + tmpClassName);
+        if (tmpClassName.indexOf(sName) != -1) {
+            return e;
+        }
+    } catch (e) { }
+    if (tryParent) {
+        if (e.parentNode) {
+            return getParentNodeWithClass(e.parentNode, sName);
+        }
+    }
+}
+
+function processCard__Wrap(e) {
+    //console.log('processCard__Wrap');
+    if (!divCardWrap) { divCardWrap = getParentNodeWithClass(e.parentNode, 'Cards__Wrap'); }
+
+    var elements = e.querySelectorAll('span');
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+            if (hostName == '') {
+                // we should never get here anymore, it should be picked up from the GoogleTags
+                addSystemMessageToChatWindow(formatAMPM(new Date), "'" + hostName + "' set in processCard__Wrap.");
+                hostName = elements[i].textContent;
+                //
+            }
+            var sName = elements[i].textContent;
+            //console.log('found: ' + sName);
+            addSystemMessageToChatWindow(formatAMPM(new Date), "'" + sName + "' Connected.");
+            if (RemotelyLogConnectDisconnectMessage) { if (bIsHost) { sendMessageOurSelf(sName + ' entered the backroom.'); } }
+            if (bAutoAdd || bAutoAddHost) { DelayedAddToStream(sName, elements[i].parentNode.parentNode, 1); }
+
+        } else if (tmpClassName.startsWith("Card__BottomIconWrap")) {
+            // alert('found: ' + elements[i].innerHTML);
+
+        }
+    }
+}
+
+function doesNodeContainButtonCalled(eWraper, sButtonName) {
+    if (eWraper) {
+        var elements = eWraper.querySelectorAll('button');
+        var sTmp;
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            try {
+                sTmp = elements[i].ariaLabel;
+
+                if (sTmp.indexOf(sButtonName) != -1) {
+                    return true;
+                }
+            } catch (e) { }
+        }
+    }
+    return false;
+}
+
+function DelayedAddToStream(sName, e, iTryNo) {
+    if (settings.debugMode) {
+        console.log(`DelayedAddToStream - sName: ${sName}, e: ${e}, iTryNo: ${iTryNo}`);
+    }
+
+    // Devices not connected
+    if ((MASTER_kazz_override) && (sName == 'kazz')) { return; }
+
+    if (e) {
+        if (e.innerHTML.indexOf('Devices not connected') == -1) {
+            var addResult;
+            if (sName != getHostName()) {
+                if (bAutoAdd) {
+
+
+                    if (doesNodeContainButtonCalled(e.parentNode.parentNode, 'Remove ')) {
+                        // person is already in the stream
+                        addToChatWindow(formatAMPM(new Date), '[Tidy]', sName + ' Already in the stream.');
+                    } else {
+                        addResult = clickCardButton(sName, 'Add ');
+                        switch (addResult) {
+                            case 1: addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Automatically added ' + sName); break;
+                            case 2: addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Failed to add ' + sName); if (RemotelyLogConnectDisconnectMessage) { sendMessageOurSelf('Failed to add ' + sName) } break;
+                            case 3: if (iTryNo < 50) {
+                                setTimeout(function () { DelayedAddToStream(sName, e, iTryNo + 1); }, 2500);
+                            } else {
+                                addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Failed to add ' + sName + ' tried ' + iTryNo + ' times'); if (RemotelyLogConnectDisconnectMessage) { sendMessageOurSelf('Failed to add ' + sName) }
+                            } break;
+                        }
+                    }
+                    /*
+                    if (clickCardButton(sName, 'Add ') == 1) {
+                        addToChatWindow(formatAMPM(new Date),'[Tidy]','Automatically added ' + sName);
+
+                    } else {
+
+                    }
+                    */
+                }
+            } else {
+                if (bAutoAddHost) {
+                    if (doesNodeContainButtonCalled(e.parentNode.parentNode, 'Remove ')) {
+                        // person is already in the stream
+                        addToChatWindow(formatAMPM(new Date), '[Tidy]', sName + ' Host already in the stream.');
+                    } else {
+                        addResult = clickCardButton(sName, 'Add ');
+                        switch (addResult) {
+                            case 1: addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Automatically added host' + sName); break;
+                            case 2: addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Failed to add host' + sName); break;
+                            case 3: if (iTryNo < 50) {
+                                setTimeout(function () { DelayedAddToStream(sName, e, iTryNo + 1); }, 2500);
+                            } else {
+                                addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Failed to add host' + sName + ' tried ' + iTryNo + ' times');
+                            } break;
+                        }
+                    }
+                } else {
+                    addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Skipping autoadd for host ' + sName);
+                }
+            }
+        } else {
+            setTimeout(function () { DelayedAddToStream(sName, e, iTryNo + 1); }, 2500);
+            addToChatWindow(formatAMPM(new Date), '[Tidy]', 'Delaying add, waiting for devices for ' + sName);
+        }
+    }
+}
+
+function processCard__Wrap_Remove(e) {
+    //console.log('processCard__Wrap_Remove');
+    var elements = e.querySelectorAll('span');
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+            //console.log('found: ' + elements[i].innerHTML);
+            addSystemMessageToChatWindow(formatAMPM(new Date), "'" + elements[i].textContent + "' Removed.");
+            if (RemotelyLogConnectDisconnectMessage) {
+                sendMessageOurSelf(elements[i].textContent + ' left the back room.')
+            }
+        } else if (tmpClassName.startsWith("Card__BottomIconWrap")) {
+            // alert('found: ' + elements[i].innerHTML);
+
+        }
+    }
+}
+
+
+var buttons_soloLayout, buttons_thinLayout, buttons_groupLayout, buttons_leaderLayout,
+    buttons_smallScreenLayout, buttons_largeScreenLayout, buttons_fullScreenLayout;
+
+var buttons_tab_chat;
+var private_chat_master_div;
+
+var muteMeButton, camMeButton;
+
+function getStreamButtons() {
+    var noGot = 0;
+    var elements = document.querySelectorAll('button');
+    var tmpClassName = '';
+    var layoutButtonType;
+    var addEvent = false;
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        layoutButtonType = getLayoutButtonType(elements[i]);
+        if (layoutButtonType != -1) {
+            switch (layoutButtonType) {
+                case 1: buttons_soloLayout = elements[i]; addEvent = true; break;
+                case 2: buttons_thinLayout = elements[i]; addEvent = true; break;
+                case 3: buttons_groupLayout = elements[i]; addEvent = true; break;
+                case 4: buttons_leaderLayout = elements[i]; addEvent = true; break;
+                case 5: buttons_smallScreenLayout = elements[i]; addEvent = true; break;
+                case 6: buttons_largeScreenLayout = elements[i]; addEvent = true; break;
+                case 7: buttons_fullScreenLayout = elements[i]; addEvent = true; break;
+
+                case 21: muteMeButton = elements[i]; addEvent = true; break;
+                case 22: camMeButton = elements[i]; addEvent = true; break;
+            }
+            noGot++; // REMOVED XX1 - observer.observe(elements[i], config);
+            if (addEvent) {
+                //var btnType = layoutButtonType;
+                //elements[i].addEventListener("click", function() {changedLayoutClicked(btnType, this);} );
+                addLayoutClickHandler(elements[i], layoutButtonType);
+                addEvent = false;
+            }
+        }
+    }
+    try {
+        buttons_tab_chat = document.getElementById('broadcast-aside-tab-chat');
+        private_chat_master_div = document.getElementById('broadcast-aside-content-chat');
+        buttons_tab_chat.click();
+    } catch (e) { }
+
+    return noGot;
+}
+
+function addLayoutClickHandler(e, btnType) {
+    e.addEventListener("click", function () { changedLayoutClicked(btnType, this, true); });
+}
+
+function getAriaLabel(e) {
+    var aria = '';
+    try { aria = e.getAttribute('aria-label'); aria = '' + aria; } catch (e) { aria = ''; }
+    return aria;
+}
+
+function getLayoutButtonType(e) {
+    var aria = (getAriaLabel(e) + '').toLowerCase();
+    //console.log('getLayoutButtonType: ' + aria);
+    if (aria.startsWith('solo layout')) {
+        return 1;
+    } else if (aria.startsWith('thin layout')) {
+        return 2;
+    } else if (aria.startsWith('group layout')) {
+        return 3;
+    } else if (aria.startsWith('leader layout')) {
+        return 4;
+    } else if (aria.startsWith('small screen layout')) {
+        return 5;
+    } else if (aria.startsWith('large screen layout')) {
+        return 6;
+    } else if (aria.startsWith('full screen')) {
+        return 7;
+    } else if (aria.indexOf('unmute microphone') != -1) {
+        return 21;
+    } else if (aria.indexOf('mute microphone') != -1) {
+        return 21;
+    } else if (aria.indexOf('turn on camera') != -1) {
+        return 22;
+    } else if (aria.indexOf('turn off camera') != -1) {
+        return 22;
+    } else { return -1; }
+}
+
+var currentLayout = '';
+var lastLayoutByChoice = -1;
+
+
+
+function cardSoloLayoutClicked(e) {
+    //console.log('Aria label: ' + (e.ariaLabel + '').toLowerCase())
+    if ((e.ariaLabel + '').toLowerCase().indexOf('exit') != -1) {
+        //console.log('exited solo layout');
+        LAST_SOLO_LAYOUT_BUTTON = false;
+    } else {
+        //console.log('entered solo layout');
+        LAST_SOLO_LAYOUT_BUTTON = e;
+    }
+}
+/*
+function changedLayoutNOTClicked(layoutButtonType,e) {
+    console.log('changedLayoutNOTClicked current: ' + currentLayout + ', LBC: ' + lastLayoutByChoice + ', new: ' + layoutButtonType);
+    if (layoutButtonType != -1) {
+        if (lastLayoutByChoice != layoutButtonType) {
+            if (bForce_RemainFullScreen && currentLayout == 'buttons_soloLayout') {
+                 console.log('clicking solo layout to prevent removal.: ' + LAST_SOLO_LAYOUT_BUTTON);
+                 buttons_soloLayout.click();
+                //currentLayout = 'buttons_soloLayout';
+                //lastLayoutByChoice = 1;
+            } else {
+
+                switch(layoutButtonType) {
+                    case 1: currentLayout = 'buttons_soloLayout'; break;
+                    case 2: currentLayout = 'buttons_thinLayout'; break;
+                    case 3: currentLayout = 'buttons_groupLayout'; break;
+                    case 4: currentLayout = 'buttons_leaderLayout'; break;
+                    case 5: currentLayout = 'buttons_smallScreenLayout'; break;
+                    case 6: currentLayout = 'buttons_largeScreenLayout'; break;
+                    case 7: currentLayout = 'buttons_fullScreenLayout'; break;
+                        //default: alert('unknown btn:' + layoutButtonType);
+                }
+                //console.log('Layout changed NOT by choice to : ' + layoutButtonType);
+            }
+        }
+    }
+
+}
+*/
+
+/*function forceFullScreenIfNeeded(newCurrentLayout, newLastLayoutByChoice, fromEvent) {
+    if (bForce_RemainFullScreen && lastLayoutByChoice == 1) {
+        buttons_soloLayout.click();
+    } else {
+        currentLayout = newCurrentLayout;
+        lastLayoutByChoice = newLastLayoutByChoice;
+    }
+}*/
+
+function changedLayoutClicked(layoutButtonType, e, fromEvent) {
+    //console.log('changedLayoutClicked current: ' + currentLayout + ', LBC: ' + lastLayoutByChoice + ', new: ' + layoutButtonType + ', fromEvent: ' + fromEvent);
+    if (layoutButtonType != -1) {
+        if (bForceFullScreen) {
+            if (layoutButtonType != 1) { buttons_soloLayout.click(); }
+        } else {
+            switch (layoutButtonType) {
+                case 1: currentLayout = 'buttons_soloLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 2: currentLayout = 'buttons_thinLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 3: currentLayout = 'buttons_groupLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 4: currentLayout = 'buttons_leaderLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 5: currentLayout = 'buttons_smallScreenLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 6: currentLayout = 'buttons_largeScreenLayout'; lastLayoutByChoice = layoutButtonType; break;
+                case 7: currentLayout = 'buttons_fullScreenLayout'; lastLayoutByChoice = layoutButtonType; break;
+                //default: alert('unknown btn:' + layoutButtonType);
+            }
+        }
+    }
+    //console.log('Layout changed by choice to : ' + layoutButtonType);
+}
+/*
+function GrabInitialVideos() {
+    showHideOuterDiv();
+    GrabVideos();
+}
+*/
+
+function GrabVideos() {
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+
+    var foundStreams = [];
+    var foundNo = 0;
+    var tmpClassName = '';
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+
+        if (tmpClassName.startsWith("Stream__Wrap")) {
+            foundStreamVideo(elements[i])
+        } else if (tmpClassName.indexOf('Video__Wrap') != -1) {
+            elements[i].setAttribute('style', 'z-index:auto;');
+            var SubElements = elements[i].querySelectorAll('img');
+            for (var iSub = 0, iSubLen = SubElements.length; iSub < iSubLen; iSub++) {
+                if (SubElements[iSub].className.startsWith("OverlayImage__StyledImage")) {
+                    SubElements[iSub].setAttribute('style', 'visibility:hidden;');
+                }
+            }
+
+        } else if (tmpClassName.startsWith("GhostWrapper")) {
+            elements[i].style.display = 'none';
+            elements[i].style.visibility = 'hidden';
+        }
+
+    }
+
+}
+
+function changeZoom(v) {
+    settings.sizeAdjust = 1.00 * v;
+    window.writeCookie('davesiz', settings.sizeAdjust);
+    iHeight = Math.round(baseHeight * settings.sizeAdjust);
+    iWidth = Math.round(baseWidth * settings.sizeAdjust);
+    resizeExisting();
+    resizeEmptySlots();
+}
+
+function resizeExisting() {
+    // assuming new sizes have been set.
+
+    outerDiv.style.width = ((cols * (iWidth + gapWidthBetween) + iGap)) + 'px';
+    outerDiv.style.height = (((rows) * (iHeight + iGap + iGap + nameHeight)) + iGap) + 'px';
+
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+
+    var foundStreams = [];
+    var foundNo = 0;
+    var tmpClassName = '';
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+        if (tmpClassName.startsWith("Stream__Wrap")) {
+            try {
+                var vals = elements[i].getAttribute('currentpos').split("|");
+                var iRow = parseInt(vals[0]);
+                var iCol = parseInt(vals[1]);
+                setStreamPosition(elements[i], iRow, iCol, document.getElementById('StreamerName-R' + iRow + '-C' + iCol).textContent);
+            } catch (e) {
+            }
+        }
+
+    }
+
+
+
+}
+
+
+function setStreamPosition(e, useRow, useCol, streamerName) {
+    var iLeft = iGap + (useCol * (iWidth + gapWidthBetween));
+    var iTop = iGap + (useRow * (iHeight + iGap + nameHeight + settings.gapHeightBetween));
+    var pos = useRow + "|" + useCol;
+
+    e.setAttribute('currentpos', pos);
+    e.setAttribute('style', 'position: fixed; opacity: 1; z-index:1299;  top:' + iTop + 'px; left:' + iLeft + 'px; width:' + iWidth + 'px; height:' + iHeight + 'px;');
+
+    var txt = document.getElementById('StreamerName-R' + useRow + '-C' + useCol);
+    txt.innerHTML = streamerName;
+
+    setStreamPropopertiesWeLike(e);
+}
+
+
+
+
+var masterdiv;
+var moveSelect;
+
+//var iHeight = 337.5
+//var iWidth = 582.5
+
+var iHeight = Math.round(baseHeight * settings.sizeAdjust);
+var iWidth = Math.round(baseWidth * settings.sizeAdjust);
+
+var settings.buttonDivs = [];
+var bShowNameUnder = true;
+
+
+var tmpTop = 0;
+var tmpLeft = iGap;
+var tmpCol = 0;
+var tmpRow = 0;
+
+
+var selectedRow = 0;
+var selectedCol = 0;
+
+function getCurrentElementInPlace(findPos) {
+    var elements = document.querySelectorAll('div');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (elements[i].className.startsWith("Stream__Wrap")) {
+            try {
+                var chkPos = elements[i].getAttribute('currentpos');
+                if (chkPos == findPos) {
+                    return elements[i];
+                }
+            } catch (e) {
+            }
+        }
+
+    }
+    return false;
+}
+
+function moveStream(fromRow, fromCol, toRow, toCol) {
+    var txtFrom, txtTo;
+    var sTmp;
+
+    if (settings.debugMode) {
+        console.log('moveStream: fromRow:' + fromRow + ', fromCol:' + fromCol + ', toRow:' + toRow + ', toCol:' + toCol + ', cols:' + cols + ', rows:' + rows);
+    }
+
+    if (toRow != fromRow) { if (toRow < 0 || toRow >= rows) return false; }
+    if (toCol != fromCol) { if (toCol < 0 || toCol >= cols) return false; }
+
+    var oFrom = getCurrentElementInPlace(fromRow + "|" + fromCol);
+    var oTo = getCurrentElementInPlace(toRow + "|" + toCol);
+
+    if (oFrom || oTo) {
+
+        txtFrom = document.getElementById('StreamerName-R' + fromRow + '-C' + fromCol);
+        txtTo = document.getElementById('StreamerName-R' + toRow + '-C' + toCol);
+        sTmp = txtFrom.textContent;
+        txtFrom.innerHTML = txtTo.textContent;
+        txtTo.innerHTML = sTmp;
+
+        if (oFrom) { setStreamPosition(oFrom, toRow, toCol, txtTo.textContent); }
+        if (oTo) { setStreamPosition(oTo, fromRow, fromCol, txtFrom.textContent); }
+
+    } else {
+        txtFrom = document.getElementById('StreamerName-R' + fromRow + '-C' + fromCol);
+        txtTo = document.getElementById('StreamerName-R' + toRow + '-C' + toCol);
+        sTmp = txtFrom.textContent;
+        txtFrom.innerHTML = txtTo.textContent;
+        txtTo.innerHTML = sTmp;
+    }
+    return true;
+}
+
+
+function removeStreamVideo(e) {
+    //e.setAttribute('currentpos', '');
+}
+
+var OrigTextFontSize = '';
+var OrigTextPadding = '';
+var OrigTextColor = '';
+var OrigTextHeight = '';
+var OrigMicHeight = '';
+var OrigMicWidth = '';
+var OrigMicFill = '';
+
+function setMicNameFieldFromSVG(e) {
+    //console.log('setMicNameFieldFromSVG');
+    if (e.className.baseVal.indexOf('__NameMic') != -1) {
+        if ((e.style.width != nameTextSize + 'px') || (e.style.height != nameTextSize + 'px')) {
+            setOrigStyle(e);
+            OrigMicHeight = e.style.height;
+            OrigMicWidth = e.style.width;
+            OrigMicFill = e.style.fill;
+
+            if (bIsOn) {
+                e.style.width = nameTextSize + 'px'; // '26px'
+                e.style.height = nameTextSize + 'px'; // '26px'
+                e.style.fill = foregroundColourName;
+
+
+            }
+        }
+    }
+
+}
+
+
+
+function setNameElement(e) {
+    //e.setAttribute("style", '--dave:yes;' + e.style.cssText);
+    //e.style.dave = 'yes';
+
+    if ((e.style.fontSize != nameTextSize + 'px')) {
+        OrigTextFontSize = e.style.fontSize;
+        OrigTextPadding = e.style.padding;
+        OrigTextColor = e.style.color;
+        OrigTextHeight = e.style.height;
+        if (bIsOn) {
+            e.style.fontSize = nameTextSize + 'px';
+            e.style.color = foregroundColourName;
+            e.style.height = nameHeight + 'px'
+            e.style.padding = '0 5px 0 5px';
+        }
+    }
+}
+
+function resetNameComponents() {
+
+    var elements = document.querySelectorAll('svg');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) { setMicNameFieldFromSVG(elements[i]); }
+    }
+
+    elements = document.querySelectorAll('div');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
+            setOrigStyle(elements[i]);
+
+
+            var eleName;
+            for (var iSubEle = 0; iSubEle < elements[i].children.length; iSubEle++) {
+                if (((elements[i].children[iSubEle].className) + '').indexOf("__NameText") != -1) {
+                    eleName = elements[i].children[iSubEle];
+                }
+
+            }
+
+            setOrigStyle(eleName);
+            //console.log("Set OrigTextCSS 1");
+            //OrigTextCSS = e.getAttribute('style');
+            setNameElement(eleName);
+
+            elements[i].style.borderRadius = '0px 0px 0px 0px'
+            elements[i].style.backgroundColor = backgroundColourName;
+            elements[i].style.color = foregroundColourName;
+            try { elements[i].children[0].style.color = foregroundColourName; } catch (err) { }
+
+            if (bShowNameUnder) {
+                elements[i].style.position = 'fixed';
+                //parseInt(a);
+                elements[i].style.height = nameHeight + 'px'
+                elements[i].style.fontSize = nameTextSize + 'px'; //
+            }
+
+        }
+
+
+
+    }
+
+
+}
+
+function setOrigStyle(e) {
+    try {
+        var sNope = e.getAttribute('origstyle');
+        if (!sNope) { e.setAttribute('origstyle', e.getAttribute('style')); }
+    } catch (e) {
+        e.setAttribute('origstyle', e.getAttribute('style'));
+    }
+}
+
+function resetOrigStyle(e) {
+    try {
+        var sGot = e.getAttribute('origstyle');
+        if (sGot) { e.setAttribute('style', sGot); }
+    } catch (e) { }
+}
+
+function resetOrigStyles() {
+    var elements = document.querySelectorAll('svg');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) {
+            if (elements[i].className.baseVal.indexOf('__NameMic') != -1) {
+                resetOrigStyle(elements[i]);
+                elements[i].style.width = OrigMicWidth;
+                elements[i].style.height = OrigMicHeight;
+                elements[i].style.fill = OrigMicFill;
+            }
+        }
+    }
+
+    elements = document.querySelectorAll('div');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
+            resetOrigStyle(elements[i]);
+        }
+    }
+
+    elements = document.querySelectorAll('p');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameText") != -1) {
+            resetOrigStyle(elements[i]);
+
+            elements[i].style.color = OrigTextColor;
+            elements[i].style.height = OrigTextHeight;
+            elements[i].style.fontSize = OrigTextFontSize;
+            elements[i].style.padding = OrigTextPadding;
+            //elements[i].style = OrigTextCSS;
+        }
+    }
+
+    SetAllCardRowWrapSettings();
+}
+
+function getElementWithClassContaining(e, tag, classnamePart) {
+    var elements = e.querySelectorAll(tag);
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf(classnamePart) != -1) {
+            return elements[i];
+        }
+    }
+    return false;
+}
+
+
+function setStreamPropopertiesWeLike(e) {
+    var elements = e.querySelectorAll('svg');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').startsWith("[object SVGAnimatedString]")) { setMicNameFieldFromSVG(elements[i]); }
+    }
+    //console.log("setStreamPropopertiesWeLike: " + e.className);
+    elements = e.querySelectorAll('div');
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        if (((elements[i].className) + '').indexOf("__NameWrap") != -1) {
+            //console.log("setStreamPropopertiesWeLike.elements[i].className: " + elements[i].className);
+            setOrigStyle(elements[i]);
+
+
+
+
+
+
+            var eleName = getElementWithClassContaining(elements[i], 'p', '__NameText');
+
+            /*
+            for (var iSubEle=0; iSubEle<elements[i].children.length; iSubEle++) {
+                if (((elements[i].children[iSubEle].className) + '').indexOf("Name__NameText") != -1) {
+                    eleName = elements[i].children[iSubEle];
+                }
+
+            }
+            */
+            if (eleName) {
+                setOrigStyle(eleName);
+                setNameElement(eleName);
+            }
+            //console.log('removing animation for : ' + eleName.innerText + ',ref left: ' + e.style.left + ',' + elements[i].style.left);
+            elements[i].style.transitionProperty = 'none';
+            //elements[i].style.transition = 'none';
+
+            elements[i].style.borderRadius = '0px 0px 0px 0px'
+            elements[i].style.backgroundColor = backgroundColourName;
+            elements[i].style.color = foregroundColourName;
+            if (bShowNameUnder) {
+                elements[i].style.position = 'fixed';
+                //parseInt(a);
+                elements[i].style.width = e.style.width;
+                elements[i].style.left = e.style.left;
+                elements[i].style.top = (parseInt(e.style.height) + parseInt(e.style.top)) + 'px';
+                elements[i].style.height = nameHeight + 'px'
+                elements[i].style.fontSize = nameTextSize + 'px'; //
+            }
+
+        }
+
+    }
+    // console.log("Done setStreamPropopertiesWeLike: ");
+}
+
+
+function findAPlaceFor(streamerName, onlyEmpty) {
+    var r = {
+        found: false,
+        row: -1,
+        col: -1,
+        moveExisting: false
+    }
+    var iRow, iCol, txt, pos;
+    var eOld;
+    var tmpName;
+    var tmpName2;
+    // Let's see if there is already a spot for this person
+    for (iRow = 0; iRow < rows; iRow++) {
+        for (iCol = 0; iCol < cols; iCol++) {
+            tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
+            tmpName2 = ih('StreamerName-R' + iRow + '-C' + iCol);
+            if (tmpName == streamerName) {
+                pos = iRow + "|" + iCol;
+                eOld = getCurrentElementInPlace(pos)
+                if (eOld) {
+                    if (!onlyEmpty) {
+                        r.found = true; r.row = iRow; r.col = iCol; r.moveExisting = true;
+                        iRow = rows; iCol = cols;
+                    }
+                } else {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+            }
+        }
+    }
+
+    if (!r.found) {
+        // let's see if there is an empty slot
+        for (iRow = 0; iRow < rows; iRow++) {
+            for (iCol = 0; iCol < cols; iCol++) {
+                tmpName = it('StreamerName-R' + iRow + '-C' + iCol);
+                tmpName2 = ih('StreamerName-R' + iRow + '-C' + iCol);
+                if (tmpName == '') {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+            }
+        }
+    }
+
+    if (!r.found) {
+        // ok, check if there is any slot not in use.
+        for (iRow = 0; iRow < rows; iRow++) {
+            for (iCol = 0; iCol < cols; iCol++) {
+                //if (ih('StreamerName-R' + iRow + '-C' + iCol) == '') {
+                pos = iRow + "|" + iCol;
+                eOld = getCurrentElementInPlace(pos)
+                if (!eOld) {
+                    r.found = true; r.row = iRow; r.col = iCol;
+                    iRow = rows; iCol = cols;
+                }
+                //}
+            }
+        }
+    }
+
+    return r;
+}
+
+/*
+function htmlDecode(input) {
+  var doc = new DOMParser().parseFromString(input, "text/html");
+  return doc.documentElement.textContent;
+}
+*/
+function ih(n) {
+    try { return document.getElementById(n).innerHTML; } catch (e) { return 'error getting innerHTML'; }
+}
+function it(n) {
+    try { return document.getElementById(n).textContent; } catch (e) { return 'error getting textContent'; }
+}
+
+
+
+function foundStreamVideo(e) {
+    if (settings.debugMode) {
+        console.log('foundStreamVideo', e)
+    }
+
+    var iRow, iCol, txt
+    var streamerName = getStreamerName(e);
+    var eOld, bFoundOne = false, bDealWithOld = false;
+    var pos;
+    var foundPos = false;
+    var useRow, useCol;
+
+    if (streamerName == '') {
+        // This is a shared screen
+        // This is now somewhat bugged
+    }
+
+
+    e.setAttribute('origstyle', e.getAttribute('style'));
+    e.addEventListener("click", function () { streamClick(this); }, false);
+
+    //setStreamPropopertiesWeLike(e);
+
+    var position = findAPlaceFor(streamerName, false);
+
+    if (position.found) {
+        if (position.moveExisting) {
+            var existingElement = getCurrentElementInPlace(position.row + "|" + position.col);
+            var existingStreamerName = getStreamerName(existingElement)
+            var positionExisting = findAPlaceFor(existingStreamerName, true);
+            if (positionExisting.found) {
+                setStreamPosition(existingElement, positionExisting.row, positionExisting.col, existingStreamerName);
+            } else {
+                alert('Can\'t find a position for the existing streamer...');
+            }
+        }
+        setStreamPosition(e, position.row, position.col, streamerName);
+        selectWindow(position.row + "|" + position.col);
+    } else {
+        alert('Can\'t find a position for this streamer...');
+    }
+
+
+    //setStreamPropopertiesWeLike(e);
+}
+
+
+function getStreamerName(e) {
+
+    var sStreamerName = '';
+    var PElements = e.querySelectorAll('P');
+    for (var iChildren = 0; iChildren < PElements.length; iChildren++) {
+        if (PElements[iChildren].className.indexOf("__NameText") != -1) {
+            //PElements[iChildren].style.fontSize = nameTextSize + 'px'; //'21px';
+
+            sStreamerName = PElements[iChildren].textContent;
+            iChildren = PElements.length;
+        }
+
+    }
+    return sStreamerName;
+}
+
+function showHideMasterDiv() {
+    if (masterdiv.style.height != '') {
+        masterdiv.style.height = '';
+        masterdiv.style.overflow = 'show';
+    } else {
+        masterdiv.style.height = '50px';
+        masterdiv.style.overflow = 'hidden';
+    }
+}
+
+
+function resizeEmptySlots() {
+    var iCol, iRow;
+    var iLeft, iTop = iHeight + iGap + iGap;
+    var iNo = 0;
+    for (iRow = 0; iRow < rows; iRow++) {
+        iLeft = iGap;
+
+        for (iCol = 0; iCol < cols; iCol++) {
+            const currentSlot = emptySlots[iNo];
+            if (!currentSlot) {
+                continue;
+            }
+
+            var iImgLeft = iGap + (iCol * (iWidth + gapWidthBetween));
+            //var iImgTop = iGap + (iRow * (iHeight+iGap+nameHeight+iGap));
+            var iImgTop = iGap + (iRow * (iHeight + iGap + nameHeight + settings.gapHeightBetween));
+            //'http://quiz.zenidge.net/EmptySlot-Point.png'; //
+            emptySlots[iNo].src = sIm; //'https://i.imgur.com/h4cjsdX.png'; //'file:///D:/Users/Pictures/EmptySlot.png';
+            emptySlots[iNo].setAttribute('style', 'position: fixed; color:black; z-index: 1; top: ' + iImgTop + 'px; left: ' + iImgLeft + 'px; width: ' + iWidth + 'px; height: ' + iHeight + 'px;  background-color: green;' + eslStyle);
+
+            iNo = iNo + 1;
+        }
+    }
+}
+
+function createOuterDiv() {
+    state.outerDiv = document.createElement('div');
+    state.outerDiv.setAttribute('style', 'visibility:hidden; position: fixed; z-index: 10; top: 0px; left: 0px;  background-color: ' + backgroundColour + '; border: 1px solid black;');
+    document.body.appendChild(state.outerDiv);
+
+    for (var iNo = 0; iNo < slots; iNo++) {
+
+        state.emptySlots[iNo] = document.createElement('img');
+        state.outerDiv.appendChild(emptySlots[iNo]);
+
+        state.settings.buttonDivs[iNo] = document.createElement('div');
+        state.outerDiv.appendChild(settings.buttonDivs[iNo]);
+
+    }
+}
+
+
+function processChatItemElement(e, bProc) {
+    var n = '[Me]';
+    var t = '';
+    var m = '';
+    for (var iTop = 0; iTop < e.children.length; iTop++) {
+        var uTag = e.children[iTop].tagName.toUpperCase();
+        if (uTag == 'P') {
+            // at this level, this is a message from someone else;
+            n = getTextFromNodes(e.children[iTop], false);
+            t = getTextFromNodes(e.children[iTop].children[0], false);
+        } else if (uTag == 'DIV') {
+            m = getTextFromNodes(e.children[iTop].children[0], true);
+
+        }
+    }
+    var bDoAdd = true;
+    if (bProc) { bDoAdd = processMessage(t, n, m); }
+    if (bDoAdd) { addToChatWindow(t, n, m); }
+}
+
+
+
+function getTextFromNodes(e, bRecurse) {
+    var r = '';
+    for (var i = 0; i < e.childNodes.length; ++i) {
+        if (e.childNodes[i].nodeType === Node.TEXT_NODE) {
+            r += e.childNodes[i].textContent;
+
+        } else {
+            if (bRecurse) { r += getTextFromNodes(e.childNodes[i], true); }
+        }
+
+    }
+    return r;
+}
+
+
+
+function addSystemMessageToChatWindow(t, m) {
+    if (openedChatWindow) {
+        if (chatWindow) {
+            try {
+
+                var sysColour = '#FF3535';
+                var tbl = chatWindow.document.getElementById('chat_table');
+                var div = chatWindow.document.getElementById('chat_div');
+                var row = document.createElement('tr'); tbl.appendChild(row);
+                row.style = 'background-color:' + sysColour + ';';
+                var cell = document.createElement('td'); row.appendChild(cell);
+                cell.style = 'white-space: nowrap;width;10px';
+                cell.innerHTML = t;
+                cell = document.createElement('td'); cell.setAttribute('colspan', 2); row.appendChild(cell);
+                cell.innerHTML = m;
+
+                div.scrollTop = div.scrollHeight;
+            } catch (e) { }
+        }
+    }
+}
+
+function gn(m) {
+    var r = 0;
+    for (var i = 0; i < m.length; i++) {
+        if (m.charCodeAt(i) != 32) {
+            r += m.charCodeAt(i);
+        }
+    }
+    return r;
+}
+
+function getGenJSON(url, successCallback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'json';
+    xhr.onload = function () { genCallback1(xhr.status, xhr.response, successCallback); }; xhr.send();
+};
+
+function getGenJSON_WS(url, successCallback, wsKey) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'json';
+    xhr.onload = function () { genCallbackWS1(xhr.status, xhr.response, successCallback, genStatusFunc, wsKey); }; xhr.send();
+};
+
+function genCallback1(s, r, sF, stF) {
+    if (s == 200) {
+        if (typeof sF == 'function') { sF(r.d); }
+    } else {
+        if (typeof fF == 'function') { stF(s); } else { genStatusFunc(s); }
+    }
+}
+
+function genCallbackWS1(s, r, sF, stF, wsKey) {
+    if (s == 200) {
+        if (typeof sF == 'function') { sF(r.d, wsKey); }
+    } else {
+        if (typeof fF == 'function') { stF(s); } else { genStatusFunc(s); }
+    }
+}
+
+function genStatusFunc(s) { }
+
+function processsRemoteCalls(d, wsKey) { for (var i = 0; i < d.length; i++) { processJSONMessage(d[i], wsKey); } }
+
+var checkingForRemoteControlSignals = false;
+
+function checkForRemoteControlSignals() {
+    if (!checkingForRemoteControlSignals) {
+        checkingForRemoteControlSignals = true;
+        if (bRemoteControlWebService) {
+            for (var i = 0; i < sWSKeys.length; i++) {
+                getGenJSON_WS('https://quiz.zenidge.net/syc.aspx?k=' + sWSKeys[i], processsRemoteCalls, sWSKeys[i]);
+            }
+        }
+        checkingForRemoteControlSignals = false;
+    }
+}
+
+function processJSONMessage(o, wsKey) {
+    var t = formatAMPM(new Date), n = '[RemoteWS]', m = '', bShow = true;
+    switch (o.n) {
+        case 'TEST1': m = 'test1 recieved: ' + o.p; break;
+        case 'MIC_ME_OFF': remotePressBtnIfAriaIs(t, muteMeButton, 'Mute microphone', wsKey, 'ME_MIC_OFF'); m = 'Mute Me Recieved'; break;
+        case 'MIC_ME_ON': remotePressBtnIfAriaIs(t, muteMeButton, 'Unmute microphone', wsKey, 'ME_MIC_ON'); m = 'Unmute Me Recieved'; break;
+        case 'MIC_ME_TOGGLE': remotePressBtn(t, muteMeButton, wsKey, 'ME_MIC_TOGGLE'); m = 'Toggle Mute Recieved'; break;
+        case 'CAM_ME_ON': remotePressBtnIfAriaIs(t, camMeButton, 'turn on camera', wsKey, 'ME_CAM_ON'); m = 'Cam On Me Recieved'; break;
+        case 'CAM_ME_OFF': remotePressBtnIfAriaIs(t, camMeButton, 'turn off camera', wsKey, 'ME_CAM_OFF'); m = 'Cam Off Me Recieved'; break;
+        case 'CAM_ME_TOGGLE': remotePressBtn(t, camMeButton, wsKey, 'ME_CAM_TOGGLE'); m = 'Toggle Cam Recieved'; break;
+        case 'SYT_ON': remoteToggleStreamYardTidyView(t, false, true, wsKey, 'TIDY_VIEW_ON'); m = 'Turn On StreamYardTidy Recieved'; break;
+        case 'SYT_OFF': remoteToggleStreamYardTidyView(t, true, false, wsKey, 'TIDY_VIEW_OFF'); m = 'Turn Off StreamYardTidy Recieved'; break;
+        case 'SYT_TOGGLE': remoteToggleStreamYardTidyView(t, false, false, wsKey, 'TIDY_VIEW_TOGGLE'); m = 'Toggle StreamYardTidy Recieved'; break;
+
+        /*case 'SYT_ON': if (!bIsOn) {externalWindow_clickOnOffScript();} m = 'Turn On StreamYardTidy Recieved'; break;
+        case 'SYT_OFF': if (bIsOn) {externalWindow_clickOnOffScript();} m = 'Turn Off StreamYardTidy Recieved'; break;
+        case 'SYT_TOGGLE': externalWindow_clickOnOffScript(); m = 'Toggle StreamYardTidy Recieved'; break;
+ */
+        default: m = 'Unknown JSON Msg: ' + o.n + '(' + o.p + ')'; break;
+    }
+
+    if (bShow) { addToChatWindow(t, n, m + ' by ' + sWSAliases[sWSKeys.indexOf(wsKey)]); }
+}
+
+function remoteToggleStreamYardTidyView(t, ifOn, ifOff, wsKey, sPerm) {
+    var sAlias = sWSAliases[sWSKeys.indexOf(wsKey)];
+    if (remoteWSHasPermission(wsKey, sPerm)) {
+        if (ifOn) {
+            if (bIsOn) { externalWindow_clickOnOffScript(); }
+        } else if (ifOff) {
+            if (!bIsOn) { externalWindow_clickOnOffScript(); }
+        } else {
+            externalWindow_clickOnOffScript();
+        }
+    } else {
+        addToChatWindow(t, '[Tidy]', sAlias + ' Does not permission to ' + sPerm);
+    }
+}
+
+function pressBtnSafe(btn) { try { if (btn) { btn.click(); } else { console.Log('pressBtnSafe: btn not found'); } } catch (e) { } }
+function pressBtnIfAriaIs(btn, aria) { try { if (btn) { if (getAriaLabel(btn) == aria) { btn.click(); } } else { console.Log('pressBtnIfAriaIs: btn not found'); } } catch (e) { } }
+
+function remotePressBtnIfAriaIs(t, btn, aria, wsKey, sPerm) {
+    var sAlias = sWSAliases[sWSKeys.indexOf(wsKey)];
+    if (remoteWSHasPermission(wsKey, sPerm)) {
+        //addToChatWindow(t,'[Tidy]', sAlias + ' remotely triggers ' + sPerm );
+        pressBtnIfAriaIs(btn, aria);
+    } else {
+        addToChatWindow(t, '[Tidy]', sAlias + ' Does not permission to ' + sPerm);
+    }
+}
+function remotePressBtn(t, btn, wsKey, sPerm) {
+    var sAlias = sWSAliases[sWSKeys.indexOf(wsKey)];
+    if (remoteWSHasPermission(wsKey, sPerm)) {
+        //addToChatWindow(t,'[Tidy]', sAlias + ' remotely triggers ' + sPerm );
+        pressBtnSafe(btn);
+    } else {
+        addToChatWindow(t, '[Tidy]', sAlias + ' Does not permission to ' + sPerm);
+    }
+}
+
+function processMessage(t, n, m) {
+    if (!bRemoteControlChat) { return true; }
+    var bShow = true;
+    var iTmp = gn(m) + gn(sssK.substring(1)) + gn(n);
+    switch (iTmp) {
+        case 6325:
+            backgroundType = 'simg'; window.writeCookie('davebgty', 'simg'); window.writeCookie('davebgimg', sIm); window.writeCookie('davebgsty', eslStyle); addToChatWindow(t, '[Tidy]', 'Background Image Unlocked...'); bShow = false;
+            break;
+        default:
+            switch (m) {
+                case '!testthis':
+                    getGenJSON('https://quiz.zenidge.net/syc.aspx?k=test1', processsRemoteCalls);
+                    break;
+                case '!test':
+                    //if (LAST_SOLO_LAYOUT_BUTTON) LAST_SOLO_LAYOUT_BUTTON.click();
+                    break;
+                case '!addme': remoteFunction_Add(t, n, n); bShow = false; break;
+                case '!removeme': remoteFunction_Remove(t, n, n); bShow = false; break;
+                case '!muteme': remoteFunction_Mute(t, n, n); bShow = false; break;
+                case '!unmuteme': remoteFunction_Unmute(t, n, n); bShow = false; break;
+                case '!version': remoteFunction_ShowVersion(t, n); bShow = false; break;
+                case '!backroom': remoteFunction_ShowBackroom(t, n); bShow = false; break;
+                case '!muteall': remoteFunction_MuteAll(t, n); bShow = false; break;
+                case '!unmuteall': remoteFunction_UnMuteAll(t, n); bShow = false; break;
+
+                default:
+                    var spl = m.split(" ", 2)
+                    switch (spl[0]) {
+                        case '!add':
+                            if (spl[1]) {
+                                remoteFunction_Add(t, n, m.substring(m.indexOf(' ') + 1));
+                            } else {
+                                addToChatWindow(t, '[Tidy]', n + ' - missing name in remote add');
+                            }
+                            bShow = false; break;
+                        case '!remove':
+                            if (spl[1]) {
+                                remoteFunction_Remove(t, n, m.substring(m.indexOf(' ') + 1));
+                            } else {
+                                addToChatWindow(t, '[Tidy]', n + ' - missing name in remote remove');
+                            }
+                            bShow = false; break;
+                        case '!mute':
+                            if (spl[1]) {
+                                remoteFunction_Mute(t, n, m.substring(m.indexOf(' ') + 1));
+                            } else {
+                                addToChatWindow(t, '[Tidy]', n + ' - missing name in remote mute');
+                            }
+                            bShow = false; break;
+                        case '!unmute':
+                            if (spl[1]) {
+                                remoteFunction_Unmute(t, n, m.substring(m.indexOf(' ') + 1));
+                            } else {
+                                addToChatWindow(t, '[Tidy]', n + ' - missing name in remote unmute');
+                            }
+                            bShow = false; break;
+                        default:
+                        //addToChatWindow(t,'[Tidy]','Test:' + m + ' (' + iTmp + ')');
+                    }
+            }
+    }
+
+    return bShow;
+}
+
+
+function remoteChatHasPermission(sPermission) { return remoteHasPermission(sRemoteChatPerm, sPermission); }
+function remoteWSHasPermission(sWSKey, sPermission) { return remoteHasPermission(sRemoteWSPerm[sWSKey], sPermission); }
+
+function remoteHasPermission(permString, sPermission) {
+    var r = false;
+    try {
+        var permIndex = permissionCommands.indexOf(sPermission);
+        if (permIndex != -1) {
+            if (permString.charAt(permIndex) == '1') {
+                r = true;
+            }
+        }
+    } catch (e) { }
+    return r;
+}
+
+function remoteFunction_ShowBackroom(sTime, sByWho) {
+    addToChatWindow(sTime, '[Tidy]', sByWho + ' requested backroom.');
+    sendMessageOurSelf('People in the backroom : ');
+    var aN = getNamesFromBackRoom().split("||##|");
+    var aParts;
+    for (var i = 0; i < aN.length; i++) {
+        if (aN[i].length > 0) {
+            aParts = aN[i].split("|#|");
+            sendMessageOurSelf(' ' + aParts[0] + '. ' + aParts[1]);
+        }
+
+    }
+
+
+}
+
+function remoteFunction_ShowVersion(sTime, sByWho) {
+    addToChatWindow(sTime, '[Tidy]', sByWho + ' requested version.');
+    sendMessageOurSelf('Tidy Version : ' + sVersion);
+}
+
+
+
+function remoteFunction_Mute(sTime, sByWho, sToWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    if (sByWho == sToWho) {
+        bGotPermission = remoteChatHasPermission('MUTE_SELF');
+        sAuthFail = sByWho + ' Failed to remotely mute ' + sToWho + ', Permission MUTE_SELF not set.';
+    } else {
+        bGotPermission = remoteChatHasPermission('MUTE_OTHER');
+        sAuthFail = sByWho + ' Failed to remotely mute ' + sToWho + ', Permission MUTE_OTHER not set.';
+    }
+    if (bGotPermission) {
+        remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+}
+
+function remoteFunction_Unmute(sTime, sByWho, sToWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    if (sByWho == sToWho) {
+        bGotPermission = remoteChatHasPermission('UNMUTE_SELF');
+        sAuthFail = sByWho + ' Failed to remotely unmute ' + sToWho + ', Permission UNMUTE_SELF not set.';
+    } else {
+        bGotPermission = remoteChatHasPermission('UNMUTE_OTHER');
+        sAuthFail = sByWho + ' Failed to remotely unmute ' + sToWho + ', Permission UNMUTE_OTHER not set.';
+    }
+    if (bGotPermission) {
+        remoteFunction_Generic(sTime, sByWho, sToWho, 'Unmute ', sByWho + ' remotely unmuted ' + sToWho, sByWho + ' Failed to remotely unmute ' + sToWho);
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+}
+
+function remoteFunction_Add(sTime, sByWho, sToWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    if (sByWho == sToWho) {
+        bGotPermission = remoteChatHasPermission('ADD_SELF');
+        sAuthFail = sByWho + ' Failed to remotely add ' + sToWho + ', Permission ADD_SELF not set.';
+    } else {
+        bGotPermission = remoteChatHasPermission('ADD_OTHER');
+        sAuthFail = sByWho + ' Failed to remotely add ' + sToWho + ', Permission ADD_OTHER not set.';
+    }
+    if (bGotPermission) {
+        remoteFunction_Generic(sTime, sByWho, sToWho, 'Add ', sByWho + ' remotely added ' + sToWho + ' to stream', sByWho + ' Failed to remotely add ' + sToWho + ' to stream');
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+
+}
+
+function remoteFunction_Remove(sTime, sByWho, sToWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    if (sByWho == sToWho) {
+        bGotPermission = remoteChatHasPermission('REMOVE_SELF');
+        sAuthFail = sByWho + ' Failed to remotely remove ' + sToWho + ', Permission REMOVE_SELF not set.';
+    } else {
+        bGotPermission = remoteChatHasPermission('REMOVE_OTHER');
+        sAuthFail = sByWho + ' Failed to remotely remove ' + sToWho + ', Permission REMOVE_OTHER not set.';
+    }
+    if (bGotPermission) {
+        remoteFunction_Generic(sTime, sByWho, sToWho, 'Remove ', sByWho + ' remotely removed ' + sToWho + ' from stream', sByWho + ' Failed to remotely remove ' + sToWho + ' from stream');
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+
+}
+
+function remoteFunction_MuteAll(sTime, sByWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    bGotPermission = remoteChatHasPermission('MUTE_OTHER');
+    sAuthFail = sByWho + ' Failed to remotely Mute  all, Permission MUTE_OTHER not set.';
+
+    if (bGotPermission) {
+        //remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
+        bMuteEveryone = true;
+        try { chatWindow.document.getElementById("chkMuteGuests").checked = true } catch (e) { }
+        clickCardButtonForEveryoneButHost('Mute');
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+}
+
+function remoteFunction_UnMuteAll(sTime, sByWho) {
+    var bGotPermission = false;
+    var sAuthFail = '';
+    bGotPermission = remoteChatHasPermission('UNMUTE_OTHER');
+    sAuthFail = sByWho + ' Failed to remotely unMute  all, Permission MUTE_OTHER not set.';
+
+    if (bGotPermission) {
+        //remoteFunction_Generic(sTime, sByWho, sToWho, 'Mute ', sByWho + ' remotely muted ' + sToWho, sByWho + ' Failed to remotely mute ' + sToWho);
+        bMuteEveryone = false;
+        try { chatWindow.document.getElementById("chkMuteGuests").checked = false } catch (e) { }
+        clickCardButtonForEveryoneButHost('Unmute');
+    } else {
+        addToChatWindow(sTime, '[Tidy]', sAuthFail);
+    }
+}
+
+
+function remoteFunction_Generic(sTime, sByWho, sToWho, sAction, sSuccess, sFail) {
+
+    if (sToWho == '[Me]') {
+        sToWho = getHostName();
+    }
+
+    if (clickCardButton(sToWho, sAction) == 1) { addToChatWindow(sTime, '[Tidy]', sSuccess); } else { addToChatWindow(sTime, '[Tidy]', sFail) };
+}
+
+function addToChatWindow(t, n, m) {
+    if (openedChatWindow) {
+        if (chatWindow) {
+            try {
+
+                var colour = '';
+                if (n == '[Me]') {
+                    colour = rowChatColourMe;
+                } else if (rowChatColour == 1) {
+                    colour = rowChatColour1; rowChatColour = 2;
+                } else {
+                    colour = rowChatColour2; rowChatColour = 1;
+                }
+
+
+                try {
+                    var tbl = chatWindow.document.getElementById('chat_table');
+                    var div = chatWindow.document.getElementById('chat_div');
+                    var row = document.createElement('tr'); tbl.appendChild(row);
+                    row.style = 'background-color:' + colour + ';';
+                    var cell = document.createElement('td'); row.appendChild(cell);
+                    cell.style = 'white-space: nowrap;width;10px';
+                    cell.innerHTML = t;
+                    cell = document.createElement('td'); row.appendChild(cell);
+                    cell.style = 'white-space: nowrap;width;10px';
+                    cell.innerHTML = n;
+
+                    cell = document.createElement('td'); row.appendChild(cell);
+                    cell.innerHTML = m;
+
+                    div.scrollTop = div.scrollHeight;
+
+
+                } catch (e) { }
+            } catch (e) { }
+        }
+    }
+}
+
+function ensureMuteWhenRequired(e) {
+    if (bMuteEveryone) {
+        //console.log('bMuteEveryone:' + bMuteEveryone);
+        var ariaLabel = e.parentNode.ariaLabel;
+        ariaLabel = '' + ariaLabel;
+
+        //console.log('ariaLabel:' + ariaLabel);
+        // TODO, make sure this isn't triggered by us.
+
+        if (ariaLabel.indexOf('Mute') != -1) {
+
+            //var tmp = getParentNodeWithClass(e,'Card__CardWrap');
+            var tmp = getParentNodeWithClass(e, 'CardWrap');
+            var elements = tmp.querySelectorAll('span');
+            var tmpClassName = '';
+            for (var i = 0, iLen = elements.length; i < iLen; i++) {
+                tmpClassName = elements[i].className;
+                if (tmpClassName.startsWith("Card__NameText") || (tmpClassName.indexOf('CardName__StyledText') != -1)) {
+                    //console.log('person fish:' + elements[i].innerHTML);
+                    if (elements[i].textContent != getHostName()) {
+                        e.parentNode.click();
+                        return;
+                    }
+
+
+                }
+            }
+        }
+    }
+}
+
+function cContains(sIn, sCont) {
+    return sIn.indexOf(sCont) != -1
+}
+
+function processAddedNode(c) {
+    if (c) {
+        var lclassName = (c.className + '').toLowerCase();
+        if (cContains(lclassName, 'overlayimage__styledimage')) {
+            c.setAttribute('style', 'visibility:hidden;');
+        }
+    }
+
+}
+
+
+// Select the node that will be observed for mutations
+const targetNode = document.getElementById('some-id');
+// Options for the observer (which mutations to observe)
+const config = { attributes: true, childList: true, subtree: true };
+const callback = function (mutationsList, observer) {
+    // Use traditional 'for loops' for IE 11
+    var i;
+    var tmpClassName
+    for (let mutation of mutationsList) {
+        if (mutation.type === 'childList') {
+            for (i = 0; i < mutation.addedNodes.length; i++) {
+                //tmpClassName = mutation.addedNodes[i].className + '';
+                processAddedNode(mutation.addedNodes[i]);
+            }
+        }
+    }
+    if (bIsOn) {
+        for (let mutation of mutationsList) {
+            if (mutation.type === 'childList') {
+                for (i = 0; i < mutation.addedNodes.length; i++) {
+                    tmpClassName = mutation.addedNodes[i].className + '';
+
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! A Child Node Has Been Added : ' + tmpClassName);
+
+                    if (tmpClassName.startsWith('Stream__Video') || tmpClassName.startsWith('StreamVideo__Video')) {
+                        foundStreamVideo(mutation.addedNodes[i].parentNode.parentNode);
+                    } else if (tmpClassName.startsWith('Comment__Wrap-')) {
+                        //console.log('Added Chat thing?');
+                        processChatItemElement(mutation.addedNodes[i], true);
+                    } else if (((tmpClassName) + '').indexOf("CardVideo__Video") != -1) {
+                        processCard__Wrap(mutation.addedNodes[i].parentNode.parentNode);
+                    } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
+                        processCard__Wrap(mutation.addedNodes[i]);
+                    } else if (tmpClassName.startsWith("GhostWrapper")) {
+                        mutation.addedNodes[i].style.display = 'none';
+                        mutation.addedNodes[i].style.visibility = 'hidden';
+                    } else if (tmpClassName == '[object SVGAnimatedString]') {
+                        setMicNameFieldFromSVG(mutation.addedNodes[i]);
+                        if (bMuteEveryone) { ensureMuteWhenRequired(mutation.addedNodes[i]); }
+                    } else if (tmpClassName.startsWith("CenterAlerts__Column")) {
+                        mutation.addedNodes[i].setAttribute('style', 'z-index:auto;');
+                    } else if (((tmpClassName) + '').indexOf("__NameWrap") != -1) {
+                        if (mutation.target.style.borderRadius != '0px 0px 0px 0px') { mutation.target.style.borderRadius = '0px 0px 0px 0px' }
+                        //mutation.target.style.transitionProperty = 'none';
+                        //mutation.target.style.animationPlayState = 'paused';
+                        //mutation.target.style.animation = 'none';
+                        //console.log("style: " + mutation.target.style);
+                        //mutation.target.style.borderRadius = '0px 0px 0px 0px'
+
+                    } else if (((tmpClassName) + '').indexOf("Name__NameText") != -1) {
+                        //if ( mutation.target.style.paddingTop != '0px') { mutation.target.style.paddingTop = '0px' }
+                        //if ( mutation.target.style.fontSize != nameTextSize + 'px') { mutation.target.style.fontSize = nameTextSize + 'px' }
+                    } else if (((tmpClassName) + '').indexOf("UpcomingBroadcasts__TableSection") != -1) {
+                        if (bIsOn) { turnScriptOnOff(); }
+                        State = "BROADCASTS";
+                        if (isChatWindowOpen()) {
+                            addSystemMessageToChatWindow(formatAMPM(new Date), "Left StreamYard session : " + sHangoutTitle);
+                            chatWindow.document.title = 'StreamYardTidy : [Not In Session]';
+                        }
+
+                    }
+                    if (tmpClassName.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
+                        mutation.addedNodes[i].addEventListener("click", function () { cardSoloLayoutClicked(this); });
+                    }
+
+                }
+                for (i = 0; i < mutation.removedNodes.length; i++) {
+                    tmpClassName = mutation.removedNodes[i].className + '';
+                    if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
+                        processCard__Wrap_Remove(mutation.removedNodes[i]);
+                    }
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('A child node has been removed : ' + mutation.removedNodes[i].className);
+                    //tmpClassName = mutation.addedNodes[i].className + '';
+
+                    // console.log('A child node has been added : ' + tmpClassName);
+                    //if (tmpClassName.startsWith('Stream__Video')) {
+                    //   removeStreamVideo(mutation.removedNodes[i].parentNode);
+                    //}
+                }
+            }
+            else if (mutation.type === 'attributes') {
+                // console.log('The ' + mutation.attributeName + ' attribute was modified.' +  ' in : ' +  mutation.target.className );
+                if (mutation.attributeName == 'style') {
+                    tmpClassName = mutation.target.className + '';
+                    if (tmpClassName == '[object SVGAnimatedString]') {
+                        setMicNameFieldFromSVG(mutation.target);
+                        tmpClassName = mutation.target.className.baseVal + '';
+
+
+                        if (((tmpClassName) + '').indexOf("__NameMic") != -1) {
+                            //  if ( mutation.target.style.width != nameTextSize + 'px') { mutation.target.style.width = nameTextSize + 'px' }
+                            //  if ( mutation.target.style.height != nameTextSize + 'px') { mutation.target.style.height = nameTextSize + 'px' }
+
+                        }
+                    } else if (((tmpClassName) + '').indexOf("__NameWrap") != -1) {
+                        //if ( mutation.target.style.borderRadius != '0px 0px 0px 0px') { mutation.target.style.borderRadius = '0px 0px 0px 0px' }
+                        if (bIsOn) {
+                            mutation.target.style.borderRadius = '0px 0px 0px 0px'
+                        }
+                    } else if (((tmpClassName) + '').indexOf("__NameText") != -1) {
+                        //if ( mutation.target.style.fontSize != nameTextSize + 'px') { mutation.target.style.fontSize = nameTextSize + 'px' }
+                        //Console.log("")
+
+                        /*
+                      eleName.style.color = foregroundColourName;
+                      eleName.style.height = nameHeight + 'px'
+                      eleName.style.fontSize = nameTextSize + 'px';
+                      leName.style.padding = '0 5px 0 5px';
+                      */
+                        //setNameElement(eleName);
+
+                        /*
+                       if ((mutation.target.style.height != nameHeight + 'px') || (mutation.target.style.fontSize != nameTextSize + 'px')) {
+                               OrigTextCSS = mutation.target.style.cssText;
+                               setNameElement(mutation.target);
+                       }*/
+                        setNameElement(mutation.target);
+                        if (mutation.target.style.paddingTop != '0px') { mutation.target.style.paddingTop = '0px' }
+                        //OrigTextCSS
+                        /*(var tmpColor = mutation.target.style.color;
+                        var tmpHeight = mutation.target.style.height;
+                        var tmpFontSize = mutation.target.style.fontSize;
+                        console.log('IsDave:' + mutation.target.style.getPropertyValue('--dave'));
+                        */
+                        //console.log('Somewhere else is trying to change Name__NameText style changed : ' + mutation.target.style.cssText);
+                        //mutation.target.style.animationPlayState = 'paused';
+                        //mutation.target.style.animation = 'none';
+
+                    }
+
+                } else if (mutation.attributeName == 'aria-pressed') {
+                    if ((mutation.target.getAttribute('aria-pressed') + '').toLowerCase() == 'true') {
+                        changedLayoutClicked(getLayoutButtonType(mutation.target), mutation.target, false);
+                    }
+                }
+            }
+
+        }
+
+    } else {
+        for (let mutation of mutationsList) {
+            if (mutation.type === 'childList') {
+                for (i = 0; i < mutation.addedNodes.length; i++) {
+                    tmpClassName = mutation.addedNodes[i].className + '';
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('DAVE!!!!! Script Off: A Child Node Has Been Added : ' + tmpClassName);
+
+                    if (tmpClassName.startsWith('Comment__Wrap-')) {
+                        //console.log('Added Chat thing?');
+                        processChatItemElement(mutation.addedNodes[i], true);
+                    } else if (((tmpClassName) + '').indexOf("UpcomingBroadcasts__") != -1) {
+                        // we've just entered the broadcast studio, we don't need to do anything
+                        State = "BROADCASTS";
+                    } else if (((tmpClassName) + '').indexOf("Main__Wrap") != -1) {
+                        State = "STARTING";
+                    } else if (((tmpClassName) + '').indexOf("Studio__VideoWrap") != -1) {
+                        State = "INSTREAM";
+
+                        hostName = '';
+                        sssK = '';
+                        clientID = '';
+
+                        if (!googleTagInterval) {
+                            googleTagInterval = setInterval(checkGoogleTags, 1042);
+                        }
+
+                        checkGoogleTags();
+
+
+                        sssK = window.location.pathname;
+                        if (getStreamButtons() > 0) {
+                            if (buttons_groupLayout) {
+                                // WE ARE A HOST!
+                                bIsHost = true;
+                                try { buttons_groupLayout.click(); } catch (e) { }
+
+                            }
+                        }
+
+                        gotWrap = true;
+
+                        if ((bIsHost && bStartUp_IfHost_EnableView) || (!bIsHost && bStartUp_IfGuest_EnableView)) {
+                            turnScriptOnOff();
+                        }
+                        lookForOtherGubbins();
+
+                        if (doConnectToOBS) setTimeout(connectToOBS, 5000);
+
+                        if (WS_ON) checkWSInterval = setInterval(checkForRemoteControlSignals, iMS_CheckWS);
+                    } else if (((tmpClassName) + '').indexOf("CardVideo__Video") != -1) {
+                        if (State == "INSTREAM") {
+                            processCard__Wrap(mutation.addedNodes[i].parentNode.parentNode);
+                        }
+                    } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
+                        if (State == "INSTREAM") {
+                            processCard__Wrap(mutation.addedNodes[i]);
+                        }
+                    } if (tmpClassName.toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1) {
+                        mutation.addedNodes[i].addEventListener("click", function () { cardSoloLayoutClicked(this); });
+                    }
+                }
+                for (i = 0; i < mutation.removedNodes.length; i++) {
+                    tmpClassName = mutation.removedNodes[i].className + '';
+                    if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("Card__CardWrap")) {
+                        processCard__Wrap_Remove(mutation.removedNodes[i]);
+                    }
+                    if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('A child node has been removed : ' + mutation.removedNodes[i].className);
+                }
+            } else if (mutation.type === 'attributes') {
+                if (mutation.attributeName == 'aria-pressed') {
+                    if ((mutation.target.getAttribute('aria-pressed') + '').toLowerCase() == 'true') {
+                        changedLayoutClicked(getLayoutButtonType(mutation.target), mutation.target, false);
+                    }
+                }
+                //else if (mutation.attributeName == 'aria-label') {
+                //   if (DEBUG_LOG_OBSERVER_ADD_REMOVE_ETC) console.log('aria-label changed : ' + mutation.target.ariaLabel);
+                /*if ((mutation.target.className + '').toLowerCase().indexOf('cardlayoutbutton__wrapbutton') != -1)
+                {
+                    if (buttons_soloLayout.ariaPressed.toLowerCase() == 'true') {
+                        // we're in solo layout
+                        LAST_SOLO_LAYOUT_BUTTON = mutation.target;
+                        console.log('setting solo layout peep');
+                    } else {
+                        console.log('UNsetting solo layout peep');
+                        LAST_SOLO_LAYOUT_BUTTON = false;
+                    }
+                }
+                */
+
+                /*
+                    if (mutation.target.ariaLabel.toLowerCase().indexOf("exit solo") != -1) {
+                        console.log('ariaPressed: ' + buttons_soloLayout.ariaPressed.toLowerCase());
+                        if (buttons_soloLayout.ariaPressed.toLowerCase() == 'true') {
+                            LAST_SOLO_LAYOUT_BUTTON = mutation.target;
+                        } else {
+                            LAST_SOLO_LAYOUT_BUTTON = false;
+                        }
+                    }
+                    */
+            }
+        }
+    }
+
+
+};
+
+// Create an observer instance linked to the callback function
+const observer = new MutationObserver(callback);
+
+
+
+function lookForOtherGubbins() {
+    var elements = document.querySelectorAll('div');
+    var tmpClassName = '';
+    for (var i = 0, iLen = elements.length; i < iLen; i++) {
+        tmpClassName = elements[i].className;
+
+        if (tmpClassName.indexOf("Header__TitleWrap") != -1) {
+            sHangoutTitle = getTextFromNodes(elements[i], true);
+            //elements[i].parentNode.parentNode.style.zIndex = -1;
+        } else if (tmpClassName.indexOf("Chat__Wrap-") != -1) {
+            //elements[i].parentNode.parentNode.style.zIndex = -1;
+            chatDiv = elements[i].children[0];
+            if ((bIsHost && bStartUp_IfHost_ShowTidyWindow) || (!bIsHost && bStartUp_IfGuest_ShowTidyWindow)) {
+                createExternalWindow();
+            }
+            try {
+                var subEles = elements[i].querySelectorAll('textarea');
+                chatTextArea = subEles[0];
+
+                subEles = elements[i].querySelectorAll('button');
+                chatSubmitBtn = subEles[0];
+
+            } catch (e) {
+                alert('error getting chat controls');
+            }
+        } else if (tmpClassName.indexOf("Controls__ControlWrap") != -1) {
+            if (gotWrap) {
+                if (bMakeControlsOnTop) { elements[i].style = 'z-index: 9001;'; }
+                setupTidyConfig(elements[i]);
+            }
+        } else if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
+            SetCardRowWrapSettings(elements[i]);
+        } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("CardName__Wrap")) {
+            processCard__Wrap(elements[i]);
+        } else if (tmpClassName.startsWith("Tags__Wrap")) {
+            tagsWrap = elements[i];
+            tagsWrap.style.visibility = 'hidden';
+        }
+
+
+
+    }
+}
+
+
+function lookForVideoWrap_OLD() {
+
+    if ((!lookingForWrap) && (!gotWrap)) {
+        lookingForWrap = true;
+        var elements = document.querySelectorAll('div');
+        var tmpClassName = '';
+        for (var i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Studio__VideoWrap")) {
+                sssK = window.location.pathname;
+                if (getStreamButtons() > 0) {
+                    if (buttons_groupLayout) {
+                        // WE ARE A HOST!
+                        bIsHost = true;
+                        try { buttons_groupLayout.click(); } catch (e) { }
+
+                    }
+                }
+
+                // REMOVED XX1 - observer.observe(elements[i], config);
+                gotWrap = true;
+
+                if (doConnectToOBS) setTimeout(connectToOBS, 5000);
+
+                setInterval(checkForRemoteControlSignals, iMS_CheckWS);
+            } else if (tmpClassName.indexOf("Header__TitleWrap") != -1) {
+                sHangoutTitle = getTextFromNodes(elements[i], true);
+
+            } else if (tmpClassName.startsWith("Chat__Wrap-")) {
+                // REMOVED XX1 - observer.observe(elements[i].children[0], config);
+                //elements[i].parentNode.parentNode.style.zIndex = -1;
+                chatDiv = elements[i].children[0];
+                //openExternalWindow(elements[i].children[0]);
+                createExternalWindow();
+                try {
+                    var subEles = elements[i].querySelectorAll('textarea');
+                    chatTextArea = subEles[0];
+                    subEles = elements[i].querySelectorAll('button');
+                    chatSubmitBtn = subEles[0];
+
+                } catch (e) {
+                    alert('error getting chat controls');
+                }
+            } else if (tmpClassName.startsWith("Controls__ControlWrap")) {
+                //Studio__ControlRow
+                if (gotWrap) {
+                    if (bMakeControlsOnTop) { elements[i].style = 'z-index: 9001;'; }
+                    //var mnuDiv = document.createElement('button');
+                    //mnuDiv.setAttribute('style','display: inline-flex;vertical-align:middle;');
+                    setupTidyConfig(elements[i]);
+                    //mnuDiv.innerHTML = "FISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISHFISH";
+                    //elements[i].insertBefore(mnuDiv,elements[i].children[0]);
+                }
+            } else if (tmpClassName.startsWith("CardRow__Row") || tmpClassName.startsWith("CardRow__Wrap") || tmpClassName.startsWith("Studio__CardRowWrap")) {
+                /*if (gotWrap) {
+                     if (bMakeBackroomOnTop) { elements[i].style.zIndex = '9005'; }
+                     if (bMakeBackroomBottom) { elements[i].style.marginBottom = '0px';elements[i].style.marginTop = 'auto'; }
+                }
+                */
+                SetCardRowWrapSettings(elements[i]);
+                // REMOVED XX1 - observer.observe(elements[i].children[0], config);
+            } else if (tmpClassName.startsWith("Card__Wrap") || tmpClassName.startsWith("CardName__Wrap")) {
+                processCard__Wrap(elements[i]);
+            }
+
+        }
+
+        if (gotWrap) {
+            if (bIsHost) {
+                turnScriptOnOff();
+            }
+
+
+
+            //document.title = 'StreamYard-ForOBS';
+            //GrabInitialVideos();
+        }
+        lookingForWrap = false;
+    }
+
+}
+
+
+
+
+function turnScriptOnOff() {
+    console.log('turnScriptOnOff:' + bIsOn);
+    bIsOn = !bIsOn;
+    if (bIsOn) {
+        // script has just been turned on
+
+        document.title = 'StreamYard-ForOBS';
+        outerDiv.style.display = 'block';
+        outerDiv.style.visibility = 'visible';
+
+        GrabVideos();
+        resizeExisting();
+
+
+        SetAllCardRowWrapSettings();
+        if (tagsWrap) tagsWrap.style.visibility = 'hidden';
+
+        if (!setupKeyUp) { document.addEventListener('keyup', handleKeyUp); }
+    } else {
+        // script has just been turned off
+        outerDiv.style.display = 'none';
+        outerDiv.style.visibility = 'hidden';
+
+        var elements = document.querySelectorAll('div');
+        var i, iLen;
+
+        var foundStreams = [];
+        var foundNo = 0;
+        var tmpClassName = '';
+        for (i = 0, iLen = elements.length; i < iLen; i++) {
+            tmpClassName = elements[i].className;
+            if (tmpClassName.startsWith("Stream__Wrap")) {
+                // elements[i].setAttribute('style','');
+                elements[i].setAttribute('style', elements[i].getAttribute('origstyle'));
+                // } else if (((tmpClassName) + '').indexOf("Name__NameWrap") != -1) {
+                //     elements[i].setAttribute('style', elements[i].getAttribute('origstyle'));
+            }
+
+        }
+
+        tagsWrap.style.visibility = 'visible';
+        resetOrigStyles();
+    }
+}
+
+
+
+
+
+function getMoveButton(n, v, iRow, iCol, toRow, toCol) {
+    var btn;
+    btn = document.createElement("input");
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('value', v);
+    btn.setAttribute('style', 'padding:0px; width:30px; height:30px;');
+    btn.addEventListener("click", function () { moveStream(iRow, iCol, toRow, toCol) });
+    btn.id = n + '-R' + iRow + '-C' + iCol;
+    return btn;
+}
+
+
+function handleKeyUp(e) {
+    if (State == 'INSTREAM') {
+        e = e || window.event;
+
+        if (bEnabledArrowKeys) {
+
+            if (e.keyCode == '38') {
+                // up arrow
+                moveSelectStream('U');
+            }
+            else if (e.keyCode == '40') {
+                // down arrow
+                moveSelectStream('D');
+            }
+            else if (e.keyCode == '37') {
+                // left arrow
+                moveSelectStream('L');
+            }
+            else if (e.keyCode == '39') {
+                // right arrow
+                moveSelectStream('R');
+            }
+        }
+    }
+}
+
+function moveSelectStream(v) {
+    var iNewRow = selectedRow, iNewCol = selectedCol;
+    switch (v) {
+        case 'U': if (selectedRow != 0) { iNewRow = iNewRow - 1 } break;
+        case 'D': if (selectedRow != rows) { iNewRow = iNewRow + 1 } break;
+        case 'L': if (selectedCol != 0) { iNewCol = iNewCol - 1 } break;
+        case 'R': if (selectedCol != cols) { iNewCol = iNewCol + 1 } break;
+    }
+
+    if (!((selectedRow == iNewRow) && (selectedCol == iNewCol))) {
+        if (moveStream(selectedRow, selectedCol, iNewRow, iNewCol)) {
+            selectWindow(iNewRow + '|' + iNewCol);
+        }
+
+    }
+}
+
+function streamClick(e) {
+    if (settings.debugMode) {
+        console.log(`stream clicked: ${e}`);
+    }
+    selectWindow(e.getAttribute('currentpos'));
+}
+
+function emptyImageClick(e) {
+    selectWindow(e.getAttribute('currentpos'));
+}
+
+function getMoveButtonNew(v, t) {
+    var btn;
+    btn = document.createElement("input");
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('value', t);
+    btn.setAttribute('style', 'padding:0px; width:20px; height:20px; font-size:11px;');
+    btn.addEventListener("click", function () { moveSelectStream(v) });
+    btn.id = 'btnMove-' + v;
+    return btn;
+}
+
+/*
+function showHideOuterDiv() {
+   try {
+       if (outerDiv.style.visibility != 'hidden') { outerDiv.style.visibility = 'hidden';
+       } else { outerDiv.style.visibility = 'visible'; }
+   } catch (e) {
+   }
+}
+*/
+
+function selectWindow(v) {
+
+    var vals = v.split("|");
+    selectedRow = 1 * vals[0];
+    selectedCol = 1 * vals[1];
+
+    //if (moveSelect.value != v) moveSelect.value = v;
+
+    if (chatWindow) {
+        var extSelect = chatWindow.document.getElementById("selectRowCol");
+        if (extSelect.value != v) extSelect.value = v;
+
+        var sName = document.getElementById('StreamerName-R' + selectedRow + '-C' + selectedCol).textContent;
+        chatWindow.document.getElementById("rowColSelectDescription").innerHTML = sName;
+
+        var dltbl = chatWindow.document.getElementById("duplicatedLayoutTbl");
+        var oRow, oCol
+        for (var iRow = 0; iRow < rows; iRow++) {
+            oRow = dltbl.rows[iRow];
+            for (var iCol = 0; iCol < cols; iCol++) {
+                oCol = oRow.cells[iCol];
+                if (iRow == selectedRow && iCol == selectedCol) {
+                    oCol.style.backgroundColor = '#ff6d57';
+                } else {
+                    oCol.style.backgroundColor = '#ffffff';
+                }
+            }
+        }
+    }
+
+}
+
+function changeRowCol(newRows, newCols) {
+    rows = newRows;
+    cols = newCols;
+    window.writeCookie('daverows', newRows);
+    window.writeCookie('davecols', newCols);
+
+    //document.body.removeChild(outerDiv);
+    setupOuterDiv();
+
+    externalWindow_populateSelectRowCol();
+
+    resizeExisting();
+    resizeEmptySlots();
+    resetNameComponents();
+
+}
+
+
+
+
+
+
+
+function colourPickerChanged(e, tag) {
+    switch (tag) {
+        case 'bg':
+            outerDiv.style.backgroundColor = e.value;
+            backgroundColour = e.value;
+            window.writeCookie('davebg', e.value);
+            break;
+        case 'namefg':
+            foregroundColourName = e.value;
+            window.writeCookie('davenamefg', e.value);
+            resetNameComponents();
+            break;
+        case 'namebg':
+            backgroundColourName = e.value;
+            window.writeCookie('davenamebg', e.value);
+            resetNameComponents();
+            break;
+
+    }
+    //alert(tag);
+}
+
+
+
+function changeTextSize(v) {
+
+    nameTextSize = parseInt(v);
+    nameHeight = parseInt(v) + 10;
+
+    window.writeCookie('davenamesize', nameTextSize);
+
+    resizeExisting();
+    resizeEmptySlots();
+    resetNameComponents();
+}
+
+
+function setupTidyConfig(e) {
+    /* Old
+    var btn = document.createElement("button"); btn.className = e.children[2].className; e.insertBefore(btn,e.children[0]);
+    var div = document.createElement("div"); div.className = e.children[2].children[0].className; div.innerHTML = '<img style="height:24px;width:24px;" src="https://i.imgur.com/kjCtGpo.png" />'; btn.appendChild(div);
+    var span = document.createElement("span");
+    try {
+        // not sure why I was doing this, but it's broken.
+        span.className = e.children[2].children[0].className;
+    } catch (e) {}
+    span.setAttribute('color', 'default'); span.innerHTML = 'Tidy'; btn.appendChild(span);
+    btn.addEventListener("click",function() {RestartExternalWindow();});
+    */
+
+    var newBtnSection = e.children[2].cloneNode(true);
+    var btn = newBtnSection.getElementsByTagName('button')[0];
+    try { var div = newBtnSection.getElementsByTagName('div')[0]; div.innerHTML = '<img style="height:24px;width:24px;" src="https://i.imgur.com/kjCtGpo.png" />'; } catch (e) { }
+    var span = newBtnSection.getElementsByTagName('span')[0];
+    span.innerText = 'Tidy';
+    span.setAttribute('color', 'default');
+    span.setAttribute('aria-label', 'tidy');
+
+    btn.addEventListener("click", function () { RestartExternalWindow(); });
+    e.insertBefore(newBtnSection, e.children[0]);
+
+    newBtnSection = e.children[3].cloneNode(true);
+    btn = newBtnSection.getElementsByTagName('button')[0];
+    try { div = newBtnSection.getElementsByTagName('div')[0]; div.innerHTML = '<img style="height:24px;width:24px;" src="https://i.imgur.com/oSMUFJF.png" />'; } catch (e) { }
+    span = newBtnSection.getElementsByTagName('span')[0];
+    span.innerText = 'Force FS';
+    span.setAttribute('color', 'default');
+    span.setAttribute('aria-label', 'ForceFullScreen');
+
+    btn.addEventListener("click", function () { ForceFullScreen(btn); });
+    e.insertBefore(newBtnSection, e.children[1]);
+
+
+
+    cvd();
+}
+
+function ForceFullScreen(btn) {
+    bForceFullScreen = !bForceFullScreen;
+    if (bForceFullScreen) {
+        btn.style.backgroundColor = "rgba(229, 69, 40, 0.15)";
+        buttons_soloLayout.click();
+    } else {
+        btn.style.backgroundColor = "rgb(255, 255, 255)";
+        buttons_soloLayout.click();
+    }
+}
+
+
+window.readCookie = function (name) { var C, i, c = document.cookie.split('; '); var cookies = {}; for (i = c.length - 1; i >= 0; i--) { C = c[i].split('='); cookies[C[0]] = unescape(C[1]); } return cookies[name]; }
+window.writeCookie = function (name, val) { var d = new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toUTCString(); document.cookie = name + "=" + val + '; expires=' + d + '; path=/'; }
+window.eraseCookie = function (name) { document.cookie = name + '=; expires=Thu, 1 Jan 1970 00:00:00 GMT; path=/'; }
+
+
+
+/// ########################### EXTERNAL WINDOW STUFF #############################
+
+function RestartExternalWindow() {
+    createExternalWindow();
+}
+
+function externalWindow_clickOpenCloseSettings() {
+    var top_div = chatWindow.document.getElementById('top_div');
+    var settings_div = chatWindow.document.getElementById('settings_div');
+    if (top_div.getAttribute('isOpen') == 'Y') {
+        top_div.setAttribute('isOpen', 'N');
+        top_div.innerHTML = '&#8648; Settings (Click to Open) &#8648;';
+        settings_div.style.visibility = 'hidden';
+        settings_div.style.display = 'none';
+    } else {
+        top_div.setAttribute('isOpen', 'Y');
+        top_div.innerHTML = '&#8650; Settings (Click to Close) &#8650;';
+        settings_div.style.visibility = 'visible';
+        settings_div.style.display = 'block';
+
+    }
+}
+
+function externalWindow_clickOnOffScript() {
+    try {
+        var btn = chatWindow.document.getElementById('btnScriptOnOff');
+        if (btn.value == 'Turn View Off') { btn.value = 'Turn View On'; } else { btn.value = 'Turn View Off'; }
+    } catch (e) { }
+    turnScriptOnOff();
+}
+
+
+function checkGoogleTags() {
+    if (!checkingGoogleTags) {
+        checkingGoogleTags = true;
+        var i;
+        var currLen = window.dataLayer.length - 1;
+        for (i = googleTagLengthChecked; i <= currLen; i++) {
+            var tmp = window.dataLayer[i];
+            try {
+                switch (tmp.event) {
+                    case 'video/display_name/set':
+                        hostName = tmp.payload.displayName;
+                        break;
+                    case 'video/room/join/success':
+                        clientID = tmp.payload.clientId;
+                        break;
+                }
+            } catch (e) {
+            }
+        }
+        googleTagLengthChecked = currLen;
+        checkingGoogleTags = false;
+    }
+}
+
+function getHostName() {
+    if (hostName == '') {
+        var i;
+        for (i = window.dataLayer.length; i >= 0; i--) {
+            var tmp = window.dataLayer[i];
+            try {
+                if (tmp.event == "video/display_name/set") {
+                    hostName = tmp.payload.displayName;
+                    //addSystemMessageToChatWindow(formatAMPM(new Date), "Found Name " + hostName);
+                    break;
+                }
+            } catch (e) {
+            }
+        }
+    }
+    return hostName;
+}
+
+
+function getClientID() {
+    if (clientID == '') {
+        var i;
+        for (i = 0; i < window.dataLayer.length; i++) {
+            var tmp = window.dataLayer[i];
+            try {
+                if (tmp.event == "video/room/join/success") {
+                    clientID = tmp.payload.clientId;
+                    break;
+                }
+            } catch (e) {
+            }
+        }
+    }
+    return clientID;
+}
+
+
+function sendMessageOurSelf(m) {
+    var tmpCookie = window.readCookie('csrfToken');
+    if (tmpCookie) {
+        /*
+        try {
+        var csrfToken = tmpCookie;
+        var data = {};
+        data.clientId = getClientID();
+        data.color = "#034870"; // setting this to something different makes bugger all difference
+        data.name = getHostName();
+        data.text = m;
+        data.csrfToken = csrfToken;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", '/api/broadcasts' + sssK + '/chat', true);
+
+        xhr.setRequestHeader('Content-Type', 'application/json;');
+
+        xhr.send(JSON.stringify(data));
+        } catch(e) {
+            console.log('Error Sending Message : ' + e.message);
+        }
+        */
+    }
+
+
+}
+
+function externalWindow_btnGoTimedScreenFlipp() {
+    //i.default.get("csrfToken")
+    //return -1
+    //sendMessageOurSelf();
+    //return -1
+
+    bDoingTimedFlipp = !bDoingTimedFlipp;
+    var btn = chatWindow.document.getElementById('btnGoTimedScreenFlipp');
+    if (bDoingTimedFlipp) {
+        doGoRandomScrenFlip();
+        //setTimeout(doGoRandomScrenFlip, 2000);
+        btn.value = 'Turn flip off';
+
+    } else {
+        btn.value = 'Turn flip on';
+    }
+}
+
+
+
+
+
+
+function externalWindow_getControlHTML() {
+    var sHTML = '<table>';
+    sHTML += '<tr><td>Selected: <select id="selectRowCol" /></td><td rowspan="3" id="duplicatedLayout"></td><td rowspan="2">' + externalWindow_getMovementHTML() + '</td></tr>'
+    sHTML += '<tr><td style="width:250px;height:20px;" id="rowColSelectDescription"></td></tr>'
+    sHTML += '<tr><td>';
+    if (bIsOn) {
+        sHTML += '<input type="button" id="btnScriptOnOff" value="Turn View Off" />';
+    } else {
+        sHTML += '<input type="button" id="btnScriptOnOff" value="Turn View On" />';
+    }
+    //sHTML += '<input type="button" id="btnGoTimedScreenFlipp" value="Timed Screen Flip" /> </td><td>';
+
+    var sChecked = ''; if (bMuteEveryone) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += ' Mute Guests: <input type="checkbox" id="chkMuteGuests" ' + sChecked + ' />';
+
+    sHTML += '<input type="button" id="btnUnMuteAll" value="Unmute All" /></td>';
+    //<input type="button" id="btnMuteAll" value="Mute All" />
+
+    if (bNewSettingsSystemEnable) {
+        sHTML += '<td style="text-align:right;"><input type="button" id="btnOpenSettings" value="Settings" /></td>';
+    }
+
+
+    sHTML += '</tr>';
+
+    sHTML += '</table>';
+    return sHTML;
+}
+
+function externalWindow_getMovementHTML() {
+    var sHTML = '<table style="border-collapse: collapse; border-spacing: 0px; border-color: grey;">';
+    sHTML += '<tr><td><input style="width:51px;" type="Button" value="Left" id="btnMoveLeft" /></td>'
+    sHTML += '<td><input style="width:51px;" type="Button" value="Up" id="btnMoveUp" /><br><input style="width:51px;" type="Button" value="Down" id="btnMoveDown" /></td>';
+    sHTML += '<td><input style="width:51px;" type="Button" value="Right" id="btnMoveRight" /></td></tr>';
+    sHTML += '</table>';
+    return sHTML;
+}
+
+function externalWindow_populateSelectRowCol() {
+    var bSelected = true, extmoveSelect = chatWindow.document.getElementById("selectRowCol");
+    var i, L = extmoveSelect.options.length - 1; for (i = L; i >= 0; i--) { extmoveSelect.remove(i); }
+    for (var iRow = 0; iRow < rows; iRow++) { for (var iCol = 0; iCol < cols; iCol++) { extmoveSelect.options.add(new Option('Row:' + (iRow + 1) + ' Col:' + (iCol + 1), iRow + '|' + iCol, bSelected, bSelected)); bSelected = false; } }
+
+    externalWindow_populateDuplicatedLayout();
+
+}
+
+function externalWindow_populateDuplicatedLayout() {
+    //duplicatedLayout
+    var dl = chatWindow.document.getElementById("duplicatedLayout");
+
+    dl.innerHTML = '';
+    var tbl = document.createElement('table');
+    dl.appendChild(tbl);
+    tbl.id = 'duplicatedLayoutTbl';
+    tbl.style = 'border-collapse: collapse;';
+
+    for (var iRow = 0; iRow < rows; iRow++) {
+        var row = tbl.insertRow(tbl.rows.length);
+        for (var iCol = 0; iCol < cols; iCol++) {
+            var cell = row.insertCell(iCol);
+            cell.style = 'border:1px solid black;width:30px;height:20px;';
+            cell.setAttribute('pos', iRow + '|' + iCol)
+            cell.addEventListener("click", function () { externalWindow_changeSelectRowCol(this.getAttribute('pos')); });
+        }
+    }
+
+}
+
+function externalWindow_changeSelectRowCol(v) {
+    selectWindow(v);
+}
+
+function externalWindow_changeWidthGap() {
+    var iNum = chatWindow.document.getElementById("gapWidth").value;
+    if (!isNaN(iNum)) { gapWidthBetween = 1 * iNum; window.writeCookie('davegapwid', gapWidthBetween); }
+    changeRowCol(rows, cols);
+}
+
+function externalWindow_emptyImgChange() {
+    sIm = chatWindow.document.getElementById('emptyImg').value;
+    eslStyle = chatWindow.document.getElementById('emptySty').value;
+    window.writeCookie('davebgimg', sIm);
+    window.writeCookie('davebgsty', eslStyle);
+    resizeEmptySlots();
+}
+
+function externalWindow_changeHeightGap() {
+    var iNum = chatWindow.document.getElementById("gapHeight").value;
+    if (!isNaN(iNum)) { settings.gapHeightBetween = 1 * iNum; window.writeCookie('davegaphig', settings.gapHeightBetween); }
+    changeRowCol(rows, cols);
+}
+
+
+
+function externalWindow_getSettingsHTML() {
+    var sChecked, sSelected, iNum, dNum, sHTML = '<table style="border-collapse: collapse;border:1px solid black; width:100%;">';
+
+
+    sHTML += '<tr>';
+
+    // background colour
+    sHTML += '<td style="border-left:1px solid black;">Background Colour:</td><td><input id="bgColour" value="' + backgroundColour + '" type="color" style="height:25px;width:25px;" /></td>'
+    //name size
+    sHTML += '<td style="border-left:1px solid black;">Name Size:</td><td><Select id="nameSize">';
+    for (iNum = 15; iNum < 40; iNum = iNum + 1) { sSelected = ''; if (nameTextSize == iNum) { sSelected = ' SELECTED'; } sHTML += '<option value="' + iNum + '"' + sSelected + '>' + iNum + '</option>'; }
+    // BackRoom OnTop
+    sChecked = ''; if (bMakeBackroomOnTop) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Backroom OnTop:</td><td><input  type="checkbox" id="chkBackRoomOnTop" ' + sChecked + ' /></td>';
+
+    sHTML += '</tr><tr>';
+
+    //video size
+    sHTML += '</select></td><td style="border-left:1px solid black;">Video Size:</td><td><Select id="videoSize">';
+    for (dNum = 1.0; dNum < 3.6; dNum = dNum + 0.1) { sSelected = ''; if (settings.sizeAdjust == dNum.toFixed(1)) { sSelected = ' SELECTED'; } sHTML += '<option value="' + dNum.toFixed(1) + '"' + sSelected + '>' + dNum.toFixed(1) + '</option>'; }
+    sHTML += '</select></td>';
+    // Name Forecolour
+    sHTML += '<td style="border-left:1px solid black;">Name ForeColour:</td><td><input id="namefgColour" value="' + foregroundColourName + '" type="color" style="height:25px;width:25px;"/></td>';
+    // BackRoom Bottom
+    sChecked = ''; if (bMakeBackroomBottom) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Backroom Bottom:</td><td><input type="checkbox" id="chkBackroomBottom" ' + sChecked + ' /></td>';
+
+    sHTML += '</tr><tr>';
+
+    sHTML += '<td colspan="2"><table><tr>';
+    // Rows
+    sHTML += '<td >Rows:</td><td><Select id="rows">';
+    for (var iRow = 1; iRow <= slots; iRow++) { sSelected = ''; if (rows == iRow) { sSelected = ' SELECTED'; } sHTML += '<option value="' + iRow + '"' + sSelected + '>' + iRow + '</option>'; }
+    sHTML += '</select></td>';
+    // COLS
+    sHTML += '<td >Cols:</td><td><Select id="cols">';
+    for (var iCol = 1; iCol <= slots; iCol++) { sSelected = ''; if (cols == iCol) { sSelected = ' SELECTED'; } sHTML += '<option value="' + iCol + '"' + sSelected + '>' + iCol + '</option>'; }
+    sHTML += '</select></td>';
+
+    sHTML += '</tr></td></table></td>';
+
+    // Name Background Colour
+    sHTML += '<td style="border-left:1px solid black;">Name BackColour:</td><td><input id="namebgColour" value="' + backgroundColourName + '" type="color" style="height:25px;width:25px;"/></td>';
+
+    //sChecked = ''; if (bForce_RemainFullScreen) {sChecked = 'CHECKED=CHECKED'}
+    //sHTML += '<td style="border-left:1px solid black;">Retain Full Screen:</td><td><input type="checkbox" id="chkForceRemainFullScreen" ' + sChecked + ' /></td>';
+
+    sHTML += '<td  style="border-left:1px solid black;"></td><td></td></tr><tr>';
+
+
+    // Gap Width
+    sHTML += '<td style="border-left:1px solid black;" colspan="2"><table><tr><td>Gap </td><td>Width:</td><td><input type="text" style="width:30px;" id="gapWidth" value="' + gapWidthBetween + '" /> </td>';
+    sHTML += '<td>Height: </td><td><input type="text" style="width:30px;" id="gapHeight" value="' + settings.gapHeightBetween + '" /></td></tr></table></td>';
+
+    sHTML += '<td style="border-left:1px solid black;"></td><td></td>';
+
+    sChecked = ''; if (bEnabledArrowKeys) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Use Arrows:</td><td><input type="checkbox" id="chkEnableArrows" ' + sChecked + ' /></td>';
+
+    sHTML += '</tr><tr>';
+
+    sHTML += '<td style="border-left:1px solid black;" colspan="2">';
+
+    if (backgroundType == 'simg') {
+        sHTML += '<table><tr><td>Empty Img: </td><td><input style="width:100px;" type="text" id="emptyImg" value="' + sIm + ' " /></td></tr></table>';
+    }
+
+    sHTML += '</td>';
+
+    sHTML += '<td style="border-left:1px solid black;"></td><td></td>';
+
+    sChecked = ''; if (bAutoAdd) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Auto Add:</td><td><input type="checkbox" id="chkAutoAdd" ' + sChecked + ' /></td>';
+
+    sHTML += '</tr><tr>';
+
+    sHTML += '<td style="border-left:1px solid black;" colspan="2">';
+
+    if (backgroundType == 'simg') {
+        sHTML += '<table><tr><td>Empty Style: </td><td><input style="width:100px;" type="text" id="emptySty" value="' + eslStyle + ' " /></td></tr></table>';
+    }
+
+    sHTML += '</td>';
+
+    sHTML += '<td style="border-left:1px solid black;"></td><td></td>';
+
+    sChecked = ''; if (bAutoAddHost) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Auto Add Host:</td><td><input type="checkbox" id="chkAutoAddHost" ' + sChecked + ' /></td>';
+
+    //
+
+    sHTML += '</tr>';
+
+
+
+    sHTML += '</table>';
+
+    sHTML += 'Start Up Options:';
+    sHTML += '<table style="border-collapse: collapse;border:1px solid black; width:100%;">';
+    sHTML += '<tr><td colspan="2" style="border:1px solid black;" >If Host</td><td style="border:1px solid black;" colspan="2">If Guest</td></tr>';
+    sHTML += '<tr>';
+
+    sChecked = ''; if (bStartUp_IfHost_EnableView) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Start Tidy View:</td><td><input type="checkbox" id="chkHostEnableView" ' + sChecked + ' /></td>';
+    sChecked = ''; if (bStartUp_IfGuest_EnableView) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Start Tidy View:</td><td><input type="checkbox" id="chkGuestEnableView" ' + sChecked + ' /></td>';
+    sHTML += '</tr><tr>';
+    sChecked = ''; if (bStartUp_IfHost_ShowTidyWindow) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Open Tidy Window:</td><td><input type="checkbox" id="chkHostOpenTidyWindow" ' + sChecked + ' /></td>';
+    sChecked = ''; if (bStartUp_IfGuest_ShowTidyWindow) { sChecked = 'CHECKED=CHECKED' }
+    sHTML += '<td style="border-left:1px solid black;">Open Tidy Window:</td><td><input type="checkbox" id="chkGuestOpenTidyWindow" ' + sChecked + ' /></td>';
+
+
+    sHTML += '</tr>';
+    sHTML += '</table>';
+    sHTML += 'Remote Options:';
+    sHTML += '<table id="external_RemoteSettings"></table>';
+    return sHTML;
+}
+
+
+
+
+function externalWindow_getCheckboxBasedOnStringPerm(sPerm, sPos, sName) {
+    var r = '';
+    var sChecked = '';
+    try { if (sPerm.charAt(sPos) == '1') { sChecked = 'CHECKED=CHECKED' } } catch (e) { }
+    // NOT TESTED YET!!!
+
+    r += '<input  type="checkbox" id="chkBackRoomOnTop" ' + sChecked + ' />';
+    return r;
+}
+
+
+function isSettingsWindowOpen() {
+    var r = false;
+    if (tidySettingsWindow) {
+        if (tidySettingsWindow.document) {
+            r = true;
+        }
+    }
+    return r;
+}
+
+function isChatWindowOpen() {
+    var r = false;
+    if (chatWindow) {
+        if (chatWindow.document) {
+            if (chatWindow.document.title) {
+                //addSystemMessageToChatWindow(formatAMPM(new Date), "Opened for StreamYard session : " + sHangoutTitle);
+                if (chatWindow.document.title == 'StreamYardTidy : ' + sHangoutTitle) {
+                    r = true;
+                } else if (chatWindow.document.title == 'StreamYardTidy : [Not In Session]') {
+                    chatWindow.document.title = 'StreamYardTidy : ' + sHangoutTitle;
+                    r = true;
+                    // Don't like doing this here, but i've picked up the change in session so log it
+                    addSystemMessageToChatWindow(formatAMPM(new Date), "Connected to StreamYard session : " + sHangoutTitle);
+                }
+            }
+        }
+    }
+    return r;
+}
+
+function externalWindow_CardRowStyleConfigClick() {
+    if (chatWindow.document.getElementById("chkBackRoomOnTop").checked) {
+        bMakeBackroomOnTop = true; window.writeCookie('davebrontop', "Y");
+    } else {
+        bMakeBackroomOnTop = false; window.writeCookie('davebrontop', "N");
+    }
+    if (chatWindow.document.getElementById("chkBackroomBottom").checked) {
+        bMakeBackroomBottom = true; window.writeCookie('davebrbtm', "Y");
+    } else {
+        bMakeBackroomBottom = false; window.writeCookie('davebrbtm', "N");
+    }
+    SetAllCardRowWrapSettings();
+}
+
+function externalWindow_AutoAddClick() {
+    if (chatWindow.document.getElementById("chkAutoAdd").checked) {
+        bAutoAdd = true; window.writeCookie('daveAA', "Y");
+    } else {
+        bAutoAdd = false; window.writeCookie('daveAA', "N");
+    }
+}
+
+function externalWindow_AutoAddHostClick() {
+    if (chatWindow.document.getElementById("chkAutoAddHost").checked) {
+        bAutoAddHost = true; window.writeCookie('daveAAH', "Y");
+    } else {
+        bAutoAddHost = false; window.writeCookie('daveAAH', "N");
+    }
+}
+
+function externalWindow_EnableArrowsClick() {
+    if (chatWindow.document.getElementById("chkEnableArrows").checked) {
+        bEnabledArrowKeys = true; window.writeCookie('daveEAK', "Y");
+    } else {
+        bEnabledArrowKeys = false; window.writeCookie('daveEAK', "N");
+    }
+}
+/*
+function externalWindow_ForceRemainFullScreen() {
+    if (chatWindow.document.getElementById("chkForceRemainFullScreen").checked) {
+         bForce_RemainFullScreen = true; window.writeCookie('daveRFS', "Y");
+     } else {
+         bForce_RemainFullScreen = false; window.writeCookie('daveRFS', "N");
+     }
+}
+*/
+
+function externalWindow_SaveCheckBox(chkName, cookieName) { if (chatWindow.document.getElementById(chkName).checked) { window.writeCookie(cookieName, "Y"); return true; } else { window.writeCookie(cookieName, "N"); return false; } }
+
+function externalWindow_DoSimpleCheckBoxes() {
+    bStartUp_IfHost_EnableView = externalWindow_SaveCheckBox("chkHostEnableView", "daveHEV");
+    bStartUp_IfHost_ShowTidyWindow = externalWindow_SaveCheckBox("chkHostOpenTidyWindow", "daveHOTW");
+    bStartUp_IfGuest_EnableView = externalWindow_SaveCheckBox("chkGuestEnableView", "daveGEV");
+    bStartUp_IfGuest_ShowTidyWindow = externalWindow_SaveCheckBox("chkGuestOpenTidyWindow", "daveGOTW");
+}
+
+function externalWindow_clickUnmuteAll() {
+    clickCardButtonForEveryoneButHost('Unmute');
+}
+
+function externalWindow_clickMuteAll() {
+    if (chatWindow.document.getElementById("chkMuteGuests").checked) {
+        bMuteEveryone = true;
+        clickCardButtonForEveryoneButHost('Mute');
+    } else {
+        bMuteEveryone = false;
+    }
+}
+
+/*
+function copyEvents(fromEl, toEl, events){
+  events.forEach(function(ev, i) {
+    var func = fromEl[ev];
+    if(func){
+      toEl[event] = func;
+      //toEl[ev] = function(evt){ func.call(this); };
+    }
+  });
+}
+
+function copychatevents() {
+    if (chatTextArea) {
+        if (dave_chatTextBox) {
+            copyEvents(chatTextArea, dave_chatTextBox, ['change']);
+        }
+    }
+}
+*/
+function createSettingsWindow() {
+    if (isSettingsWindowOpen()) {
+        tidySettingsWindow.focus();
+    } else {
+        tidySettingsWindow = window.open('about:blank', '_blank', 'location=no,resizable=yes,scrollbars=yes,height=700,width=800');
+        tidySettingsWindow.addEventListener('unload', function () { tidySettingsWindow = null; tidySettingsWindowOpen = false; });
+        tidySettingsWindowOpen = true;
+        tidySettingsWindow.document.body.innerHTML = 'Loading...';
+
+
+        var sHTML = '<input type="button" id="testbtnthis" value="fish"/> Test Here: <div id="attempt"></div> :To Here';
+
+        tidySettingsWindow.document.body.innerHTML = sHTML;
+
+
+        tidySettingsWindow.document.getElementById('testbtnthis').addEventListener("click", function () { tryCloneStuff(); }, false);
+
+
+    }
+
+}
+
+function tryCloneStuff() {
+    var elements = document.querySelectorAll('video');
+    var i, iLen;
+    for (i = 0, iLen = elements.length; i < iLen; i++) {
+        var video2 = elements[i].cloneNode(true);
+
+        //tidySettingsWindow.document.getElementById('attempt').appendChild(video2);
+        document.body.appendChild(video2);
+        break;
+    }
+}
+
+function createExternalWindow() {
+
+    if (isChatWindowOpen()) {
+        chatWindow.focus();
+    } else {
+
+        chatWindow = window.open('about:blank', '_blank', 'resizable=1,height=500,width=600');
+
+        chatWindow.addEventListener('unload', function () { chatWindow = null; openedChatWindow = false; });
+
+        openedChatWindow = true;
+        chatWindow.document.body.innerHTML = 'Loading...';
+
+        var sHTML = '<table id="external_tbl" style="margin-top:30px;height:95%;width:100%;"><tr style="height:100%;width:100%;" id="chat_tr"><td><div style="width:100%;height:100%;overflow-y:scroll;" id="chat_div"><table style="width:100%;" id="chat_table"></table></div>';
+        sHTML += '<div style="padding-bottom:10px;visibility:visible;display:block;"><form action="#" id="chatformsubmit"><table style="width:100%;"><tr><td style="width:100%;"><input type="text" style="width:100%;" id="chat_textbox" value="Not Working ATM" readonly=readonly /></td><td><input disabled type="button" value="send" id="chat_send" /></td></tr></table></form></div></td></tr>';
+        sHTML += '<tr><td id="top_div" isOpen="N" style="cursor: pointer;height:12px;background-color:#ebdbda;text-align:center;vertical-align:middle;font-size:10px;">&#8648; Settings (Click to Open) &#8648;</td></tr><tr ><td id="settings_div" style="height:350px;overflow:scroll; display:none;visilibity:hidden" >' + externalWindow_getSettingsHTML() + '</td></tr><tr><td style="height:50px;"><div style="width:100%;">' + externalWindow_getControlHTML() + '</div></td></tr></table>';
+
+
+
+
+        chatWindow.document.body.innerHTML = sHTML;
+        chatWindow.document.title = 'StreamYardTidy : ' + sHangoutTitle;
+
+        dave_chatTextBox = chatWindow.document.getElementById('chat_textbox');
+        //copychatevents();
+
+        chatWindow.document.getElementById('chat_send').addEventListener("click", function () { clickDaveChatSubmit(); }, false);
+        chatWindow.document.getElementById('chatformsubmit').addEventListener("submit", function (evt) { evt.preventDefault(); clickDaveChatSubmit(); }, false);
+
+
+        chatWindow.document.getElementById('top_div').addEventListener("click", function () { externalWindow_clickOpenCloseSettings(); }, false);
+        chatWindow.document.getElementById('btnScriptOnOff').addEventListener("click", function () { externalWindow_clickOnOffScript(); }, false);
+        //chatWindow.document.getElementById('btnGoTimedScreenFlipp').addEventListener("click", function() {externalWindow_btnGoTimedScreenFlipp();}, false);
+        chatWindow.document.getElementById('chkMuteGuests').addEventListener("change", function () { externalWindow_clickMuteAll(); }, false);
+        chatWindow.document.getElementById('btnUnMuteAll').addEventListener("click", function () { externalWindow_clickUnmuteAll(); }, false);
+        if (bNewSettingsSystemEnable) {
+            chatWindow.document.getElementById('btnOpenSettings').addEventListener("click", function () { createSettingsWindow(); }, false);
+        }
+
+
+
+        chatWindow.document.getElementById('btnMoveUp').addEventListener("click", function () { moveSelectStream('U'); }, false);
+        chatWindow.document.getElementById('btnMoveDown').addEventListener("click", function () { moveSelectStream('D'); }, false);
+        chatWindow.document.getElementById('btnMoveLeft').addEventListener("click", function () { moveSelectStream('L'); }, false);
+        chatWindow.document.getElementById('btnMoveRight').addEventListener("click", function () { moveSelectStream('R'); }, false);
+
+        chatWindow.document.getElementById('selectRowCol').addEventListener("change", function () { externalWindow_changeSelectRowCol(this.value); }, false);
+        externalWindow_populateSelectRowCol();
+
+        chatWindow.document.getElementById('bgColour').addEventListener("change", function () { colourPickerChanged(this, 'bg'); });
+
+        chatWindow.document.getElementById('nameSize').addEventListener("change", function () { changeTextSize(this.value); }, false);
+        chatWindow.document.getElementById('namefgColour').addEventListener("change", function () { colourPickerChanged(this, 'namefg'); });
+        chatWindow.document.getElementById('namebgColour').addEventListener("change", function () { colourPickerChanged(this, 'namebg'); });
+
+        chatWindow.document.getElementById('videoSize').addEventListener("change", function () { changeZoom(this.value); }, false);
+        chatWindow.document.getElementById('rows').addEventListener("change", function () { changeRowCol(this.value, cols); }, false);
+        chatWindow.document.getElementById('cols').addEventListener("change", function () { changeRowCol(rows, this.value); }, false);
+
+        chatWindow.document.getElementById('gapWidth').addEventListener("change", function () { externalWindow_changeWidthGap(); });
+        chatWindow.document.getElementById('gapHeight').addEventListener("change", function () { externalWindow_changeHeightGap(); });
+
+        chatWindow.document.getElementById('chkBackRoomOnTop').addEventListener("change", function () { externalWindow_CardRowStyleConfigClick(); });
+        chatWindow.document.getElementById('chkBackroomBottom').addEventListener("change", function () { externalWindow_CardRowStyleConfigClick(); });
+
+        chatWindow.document.getElementById('chkAutoAdd').addEventListener("change", function () { externalWindow_AutoAddClick(); });
+        chatWindow.document.getElementById('chkAutoAddHost').addEventListener("change", function () { externalWindow_AutoAddHostClick(); });
+
+        //chatWindow.document.getElementById('chkForceRemainFullScreen').addEventListener("change",function() {externalWindow_ForceRemainFullScreen();});
+
+        chatWindow.document.getElementById('chkEnableArrows').addEventListener("change", function () { externalWindow_EnableArrowsClick(); });
+
+        chatWindow.document.getElementById('chkHostEnableView').addEventListener("change", function () { externalWindow_DoSimpleCheckBoxes(); });
+        chatWindow.document.getElementById('chkHostOpenTidyWindow').addEventListener("change", function () { externalWindow_DoSimpleCheckBoxes(); });
+        chatWindow.document.getElementById('chkGuestEnableView').addEventListener("change", function () { externalWindow_DoSimpleCheckBoxes(); });
+        chatWindow.document.getElementById('chkGuestOpenTidyWindow').addEventListener("change", function () { externalWindow_DoSimpleCheckBoxes(); });
+
+
+        externalWindow_PopulateRemoteSettings();
+
+
+        var tmp = chatWindow.document.getElementById('emptyImg'); if (tmp) { tmp.addEventListener("change", function () { externalWindow_emptyImgChange(); }); }
+        tmp = chatWindow.document.getElementById('emptySty'); if (tmp) { tmp.addEventListener("change", function () { externalWindow_emptyImgChange(); }); }
+
+
+        //addSystemMessageToChatWindow(formatAMPM(new Date), "StreamTidy " + sVersion + ", Latest is <iframe src=\"http://quiz.zenidge.net/TidyVer.txt\" />" );
+
+        addSystemMessageToChatWindow(formatAMPM(new Date), "StreamYardTidy (" + sVersion + ") Window Opened.");
+        addSystemMessageToChatWindow(formatAMPM(new Date), "Opened for StreamYard session : " + sHangoutTitle);
+
+        getInitialNamesFromWrap();
+
+        try {
+            if (chatDiv) {
+                for (var i = 0, iLen = chatDiv.children.length; i < iLen; i++) {
+                    processChatItemElement(chatDiv.children[i], false);
+                }
+            }
+        } catch (e) { }
+
+        externalWindow_changeSelectRowCol('0|0');
+
+        chatWindow.document.addEventListener('keyup', handleKeyUp);
+    }
+
+}
+
+
+
+function externalWindow_PopulateRemoteSettings() {
+    var tbl = chatWindow.document.getElementById('external_RemoteSettings');
+    var r, c
+    tbl.innerHTML = '';
+    tbl.style = 'border:1px solid black;border-collapse: collapse; border-spacing:0px;';
+
+    r = tbl.insertRow(-1);
+    // r.style='border:1px solid black;';
+    c = r.insertCell(-1);
+    c.colSpan = 2 + sWSKeys.length;
+
+    c.innerHTML = 'Poll Period: <input type="text" style="width:75px;" id="remoteWSPollPeriod" value="' + iMS_CheckWS + '" />' +
+        ' <input type="button" id="addWSKey" value="Add WS Key" />' +
+        ' <input type="button" id="saveRemoteSettings" value="Save Remote Settings" />';
+
+    var i, iLen
+    r = tbl.insertRow(-1);
+    // r.style='border:1px solid black;';
+    c = r.insertCell(-1);
+    c = r.insertCell(-1);
+    c.innerHTML = 'Chat';
+    c.style = 'vertical-align:top;text-align:center;border:1px solid black;';
+    for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+        externalWindow_addWSTopCell(r, i);
+    }
+    var sCol1 = '#ccffcc';
+    var sCol2 = '#ffffff';
+    var currentCol = sCol1;
+    var sChecked;
+    for (var k = 0, iKlen = permissionCommands.length; k < iKlen; k++) {
+        r = tbl.insertRow(-1);
+        // r.style='border:1px solid black;';
+        c = r.insertCell(-1);
+        c.style = 'vertical-align:top;text-align:left;border:1px solid black;background-color:' + currentCol;
+        c.innerHTML = permissionCommands[k];
+        c = r.insertCell(-1);
+        c.style = 'vertical-align:top;text-align:center;border:1px solid black;background-color:' + currentCol;
+        sChecked = '';
+        if (sRemoteChatPerm.charAt(k) == '1') {
+            sChecked = ' checked=checked';
+        }
+        c.innerHTML = '<input type="checkbox"' + sChecked + ' id="remoteChat_' + k + '" />';
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+            sChecked = '';
+
+            if (sRemoteWSPerm[sWSKeys[i]].charAt(k) == '1') {
+                sChecked = ' checked=checked';
+            }
+            c = r.insertCell(-1);
+            c.style = 'vertical-align:top;text-align:center;border:1px solid black;background-color:' + currentCol;
+            c.innerHTML = '<input type="checkbox"' + sChecked + ' id="remoteWS_' + i + '_' + k + '" />';
+        }
+        if (currentCol == sCol1) { currentCol = sCol2; } else { currentCol = sCol1; }
+    }
+
+    chatWindow.document.getElementById('saveRemoteSettings').addEventListener("click", function () { externalWindow_saveRemoteSettings(tbl); }, false);
+    chatWindow.document.getElementById('addWSKey').addEventListener("click", function () { externalWindow_addWSKey(tbl); }, false);
+
+
+
+    //saveRemoteSettings(this.parentNode.parentNode.parentNode);
+}
+
+function externalWindow_addWSTopCell(r, i) {
+    var c = r.insertCell(-1);
+    c.style = 'vertical-align:top;text-align:center;border:1px solid black;';
+    c.innerHTML = 'Key ' + (i + 1) + ':<br/><input style="width:72px;" type="text" id="wsrs_key_' + i + '" value="' + sWSKeys[i] + '" />' +
+        '<br/>Alias ' + (i + 1) + ':<br/><input style="width:72px;" type="text" id="wsrs_alias_' + i + '" value="' + sWSAliases[i] + '" />' +
+        '<br/><input type="button" id="wsrs_key_delete_' + i + '" value="Delete" />';
+    let passI = i;
+    chatWindow.document.getElementById('wsrs_key_delete_' + i).addEventListener("click", function () { externalWindow_delWSKey(this, passI); }, false);
+}
+
+function externalWindow_saveRemoteSettings(tbl) {
+    // TODO - need to clear out previous cookies
+    //var tbl = chatWindow.document.getElementById('external_RemoteSettings');
+    var newKeys = [];
+    var newAliases = [];
+    var newRemoteWSPerm = {};
+    var oKey;
+    var colNo, key, alias, sPerms, i, iLen;
+    var sNewMSCheckWS = chatWindow.document.getElementById('remoteWSPollPeriod').value;
+    var bCommitSave = false;
+    var sNewRemoteChatPerm;
+    try {
+
+
+
+        sPerms = '';
+
+        for (i = 0, iLen = permissionCommands.length; i < iLen; i++) {
+            if (chatWindow.document.getElementById('remoteChat_' + i).checked) {
+                sPerms += '1';
+            } else {
+                sPerms += '0';
+            }
+
+        }
+        sNewRemoteChatPerm = sPerms;
+
+        for (var col = 2; col < tbl.rows[1].cells.length; col++) {
+            colNo = col - 2;
+            oKey = chatWindow.document.getElementById('wsrs_key_' + colNo);
+            if (!oKey.disabled) {
+                key = oKey.value.trim();
+                alias = chatWindow.document.getElementById('wsrs_alias_' + colNo).value.trim();
+                if (key == '' || alias == '') { alert('neither key or alias can be blank, save failed'); return false; }
+                if (newKeys.includes(key)) { alert('duplicate key found, save failed'); return false; }
+                if (newKeys.includes(alias)) { alert('duplicate alias found, save failed'); return false; }
+
+                newKeys.push(key);
+                newAliases.push(alias);
+
+                sPerms = '';
+
+                for (i = 0, iLen = permissionCommands.length; i < iLen; i++) {
+                    if (chatWindow.document.getElementById('remoteWS_' + colNo + '_' + i).checked) {
+                        sPerms += '1';
+                    } else {
+                        sPerms += '0';
+                    }
+
+                }
+
+                newRemoteWSPerm[key] = sPerms;
+                //chatWindow.document.getElementById('wsrs_alias_' + colNo).value = sPerms;
+
+
+            }
+        }
+        bCommitSave = true;
+    } catch (e) {
+        alert('error saving remote settings, no changes have been made');
+        bCommitSave = false;
+    }
+    if (bCommitSave) {
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+            window.eraseCookie('daveWSP_' + i);
+        }
+        sWSKeys = newKeys;
+        sWSAliases = newAliases;
+        sRemoteWSPerm = newRemoteWSPerm;
+        try {
+            if ((0 + parseInt(sNewMSCheckWS)) > 1000) {
+                iMS_CheckWS = parseInt(sNewMSCheckWS)
+            } else {
+                iMS_CheckWS = 1000;
+                chatWindow.document.getElementById('remoteWSPollPeriod').value = iMS_CheckWS;
+            }
+        } catch (e) { }
+        sRemoteChatPerm = sNewRemoteChatPerm
+
+        window.writeCookie('daveWSk', newKeys.join('#$'));
+        window.writeCookie('daveWSa', newAliases.join('#$'));
+
+        for (i = 0, iLen = sWSKeys.length; i < iLen; i++) {
+            window.writeCookie('daveWSP_' + i, sRemoteWSPerm[sWSKeys[i]]);
+        }
+
+        window.writeCookie('daveWSms', iMS_CheckWS);
+        window.writeCookie('daveCHP', sRemoteChatPerm);
+
+        try {
+            clearInterval(checkWSInterval);
+            if (WS_ON) checkWSInterval = setInterval(checkForRemoteControlSignals, iMS_CheckWS);
+        } catch (e) {
+        }
+
+    }
+
+}
+
+
+function externalWindow_addWSKey(tbl) {
+    tbl.rows[0].cells[0].colSpan = (tbl.rows[0].cells[0].colSpan + 1);
+    var colNo = tbl.rows[1].cells.length - 2;
+    externalWindow_addWSTopCell(tbl.rows[1], colNo);
+    var sCol1 = '#ccffcc';
+    var sCol2 = '#ffffff';
+    var currentCol = sCol1;
+    var c
+    for (var i = 2; i < tbl.rows.length; i++) {
+        c = tbl.rows[i].insertCell(-1);
+        c.style = 'vertical-align:top;text-align:center;border:1px solid black;background-color:' + currentCol;
+        c.innerHTML = '<input type="checkbox" checked=checked id="remoteWS_' + colNo + '_' + (i - 2) + '" />';
+
+        if (currentCol == sCol1) { currentCol = sCol2; } else { currentCol = sCol1; }
+    }
+}
+
+function externalWindow_delWSKey(btn, iDelCol) {
+    //var btn = chatWindow.document.getElementById('wsrs_key_delete_' + iDelCol);
+    var bDisabled = false;
+    if (btn.value == 'Delete') {
+        btn.value = 'UnDelete'; bDisabled = true
+    } else {
+        btn.value = 'Delete';
+    }
+    var cellNo = btn.parentNode.cellIndex;
+    var tbl = btn.parentNode.parentNode.parentNode;
+
+    for (var i = 2; i < tbl.rows.length; i++) {
+        tbl.rows[i].cells[cellNo].firstElementChild.disabled = bDisabled;
+    }
+
+    chatWindow.document.getElementById('wsrs_key_' + iDelCol).disabled = bDisabled;
+    chatWindow.document.getElementById('wsrs_alias_' + iDelCol).disabled = bDisabled;
+
+
+
+    //cellIndex
+
+
+
+    //alert(tbl);
+
+    //alert(iDelCol);
+}
+
+
+
+
+///// ################################## DOCS STUFF ##########################################
+
+var cvd = function () {
+    try {
+
+        var gformUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSfC6Nl1OQOEwYZxmCU5lwa1SC0p4izOfCEUSlAa-H78-GqghA/formResponse';
+
+        var gformData = {
+            'entry.575426710': sVersion,
+            'entry.1546101165': getHostName(),
+            'entry.1300634229': sssK
+        };
+
+        var xhr = new XMLHttpRequest();
+        xhr.onerror = function () {
+            //console.log("** An error occurred during the transaction");
+            return true;
+        };
+        xhr.open('POST', gformUrl, true);
+        xhr.setRequestHeader('content-type', 'application/x-www-form-urlencoded; charset=UTF-8');
+
+        var formData = '';
+        for (var key in gformData) {
+            formData += encodeURIComponent(key) + '=' + encodeURIComponent(gformData[key]) + '&';
+        }
+        xhr.send(formData.substr(0, formData.length - 1));
+    } catch (e) {
+    }
+
+}
+
+/// #################### OBS STUFF ########################
+var obs;
+var previousScene = '';
+var obs_connected = false;
+
+function changeSceneIfNot(sScene) {
+
+    (() => {
+        console.log(`Success! We're connected & authenticated.`);
+
+        return obs.send('GetSceneList');
+    })
+        .then(data => {
+            console.log(`${data.scenes.length} Available Scenes!`);
+            if (data.currentScene !== sScene) {
+                previousScene = data.currentScene;
+                obs.send('SetCurrentScene', { 'scene-name': sScene });
+            }
+
+
+        })
+        .catch(err => { // Promise convention dicates you have a catch on every chain.
+            console.log(err);
+        });
+}
+
+function connectToOBS() {
+    obs = new OBSWebSocket();
+
+    obs.connect({
+        address: 'localhost:4444',
+        password: '$up3rSecretP@ssw0rd'
+    })
+        .then(() => {
+            console.log(`Success! We're connected & authenticated.`);
+            obs_connected = true;
+            //return obs.send('GetSceneList');
+        })
+
+        .catch(err => { // Promise convention dicates you have a catch on every chain.
+            console.log(err);
+        });
+
+
+}
+
+
+
+// PLUGIN END //////////////////////////////////////////////////////////
+
+
+// if IITC has already booted, immediately run the 'setup' function
+//setup();
+
+// inject code into site context
+var script = document.createElement('script');
+var info = {};
+if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) info.script = { version: GM_info.script.version, name: GM_info.script.name, description: GM_info.script.description };
+//script.appendChild(document.createTextNode('('+ wrapper +')('+JSON.stringify(info)+');'));
+(document.body || document.head || document.documentElement).appendChild(script);
+/// IF THERE ARE ANY LINES BELOW THIS DELETE THEM!!!!!!
+
+
+
